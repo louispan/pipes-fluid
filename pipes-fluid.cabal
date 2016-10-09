@@ -33,7 +33,7 @@ library
 executable pipes-fluid-exe
   hs-source-dirs:      app
   main-is:             Main.hs
-  ghc-options:         -Wall -threaded -rtsopts -with-rtsopts=-N -Wall
+  ghc-options:         -Wall -threaded -rtsopts -with-rtsopts=-N
   build-depends:       base
                      , async
                      , constraints
