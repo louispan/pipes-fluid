@@ -1,5 +1,5 @@
 name:                pipes-fluid
-version:             0.1.0.0
+version:             0.2.0.0
 synopsis:            Applicative instances that allows reactively combining 'Pipes.Producer's so that a value is yielded when either Producer yields a value. This can be used to create a FRP-like reactive signal-network.
 description:         Please see README.md
 homepage:            https://github.com/louispan/pipes-fluid#readme

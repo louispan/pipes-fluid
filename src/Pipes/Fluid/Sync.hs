@@ -20,10 +20,10 @@ import qualified Pipes.Prelude as PP
 -- ie, yields a value only when both of the input producers yields a value.
 -- Ends as soon as any of the input producer is ended.
 newtype Sync m a = Sync
-  { synchronously :: P.Producer a m ()
+  { _synchronously :: P.Producer a m ()
   }
 
-makeClassyFor "HasSync" "sync" [("synchronously", "synchronously'")] ''Sync
+makeClassyFor "HasSync" "sync" [("_synchronously", "synchronously")] ''Sync
 makeWrapped ''Sync
 
 instance Monad m => Functor (Sync m) where

@@ -111,17 +111,17 @@ sigConsumer = forever $ do
 testSync :: IO ()
 testSync = testSig $ \stmSig1 stmSig2 -> do
   putStrLn "\nSync: only yield a value when both producers yields a value"
-  P.runEffect $ hoist atomically (PF.synchronously $ syncSig stmSig1 stmSig2) P.>-> sigConsumer
+  P.runEffect $ hoist atomically (PF._synchronously $ syncSig stmSig1 stmSig2) P.>-> sigConsumer
 
 testReactSTM :: IO ()
 testReactSTM = testSig $ \stmSig1 stmSig2 -> do
   putStrLn "\nReact STM: yield a value whenever any producer yields a value"
-  P.runEffect $ hoist atomically (PF.reactively $ reactSTMSig stmSig1 stmSig2) P.>-> sigConsumer
+  P.runEffect $ hoist atomically (PF._reactively $ reactSTMSig stmSig1 stmSig2) P.>-> sigConsumer
 
 testReactIdentityTSTM :: IO ()
 testReactIdentityTSTM = testSig $ \stmSig1 stmSig2 -> do
   putStrLn "\nReact IdentityT STM: reactively yields under 't STM'"
-  runIdentityT $ P.runEffect $ hoist (hoist atomically) (PF.reactively $
+  runIdentityT $ P.runEffect $ hoist (hoist atomically) (PF._reactively $
                                    reactIdentityTSTMSig
                                    (P.hoist lift stmSig1) -- make original producer under IdentityT
                                    (P.hoist lift stmSig2) -- make original producer under IdentityT
@@ -131,7 +131,7 @@ testReactIdentityTSTM = testSig $ \stmSig1 stmSig2 -> do
 testReactIO :: IO ()
 testReactIO = testSig $ \stmSig1 stmSig2 -> do
   putStrLn "\nReact IO: reactively yield under IO using lifted-async."
-  P.runEffect $ PF.reactivelyIO (reactIOSig
+  P.runEffect $ PF._reactivelyIO (reactIOSig
                                  (hoist atomically stmSig1)
                                  (hoist atomically stmSig2)
                                 )
@@ -140,7 +140,7 @@ testReactIO = testSig $ \stmSig1 stmSig2 -> do
 testReactIdentityTIO :: IO ()
 testReactIdentityTIO = testSig $ \stmSig1 stmSig2 -> do
   putStrLn "\nReact IdentityT IO: reactively yield under 't IO' using lifted-async."
-  runIdentityT $ P.runEffect $ PF.reactivelyIO (reactIdentityTIOSig
+  runIdentityT $ P.runEffect $ PF._reactivelyIO (reactIdentityTIOSig
                                                 (hoist (lift . atomically) stmSig1)
                                                 (hoist (lift . atomically) stmSig2)
                                                )

@@ -24,10 +24,10 @@ import qualified Pipes.Prelude as PP
 -- | The applicative instance of this combines multiple Producers reactively
 -- ie, yields a value as soon as either or both of the input producers yields a value.
 newtype React m a = React
-  { reactively :: P.Producer a m ()
+  { _reactively :: P.Producer a m ()
   }
 
-makeClassyFor "HasReact" "react" [("reactively", "reactively'")] ''React
+makeClassyFor "HasReact" "react" [("_reactively", "reactively")] ''React
 makeWrapped ''React
 
 instance Monad m => Functor (React m) where

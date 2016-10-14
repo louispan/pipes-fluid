@@ -30,10 +30,10 @@ import qualified Pipes.Prelude as PP
 -- ie, yields a value as soon as either or both of the input producers yields a value.
 -- This creates two threads each time this combinator is used.
 newtype ReactIO m a = ReactIO
-  { reactivelyIO :: P.Producer a m ()
+  { _reactivelyIO :: P.Producer a m ()
   }
 
-makeClassyFor "HasReactIO" "reactIO" [("reactivelyIO", "reactivelyIO'")] ''ReactIO
+makeClassyFor "HasReactIO" "reactIO" [("_reactivelyIO", "reactivelyIO")] ''ReactIO
 makeWrapped ''ReactIO
 
 instance Monad m => Functor (ReactIO m) where
