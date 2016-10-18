@@ -23,7 +23,7 @@ newtype Sync m a = Sync
   { _synchronously :: P.Producer a m ()
   }
 
-makeClassyFor "HasSync" "sync" [("_synchronously", "synchronously")] ''Sync
+makeClassy ''Sync
 makeWrapped ''Sync
 
 instance Monad m => Functor (Sync m) where
@@ -39,7 +39,7 @@ instance Monad m => Applicative (Sync m) where
       (_, Left _) -> pure ()
       (Right (f, fs'), Right (a, as')) -> do
         P.yield $ f a
-        synchronously $ Sync fs' <*> Sync as'
+        _synchronously $ Sync fs' <*> Sync as'
 
 instance Monad m => Monad (Sync m) where
   Sync as >>= f = Sync $ do
@@ -47,9 +47,9 @@ instance Monad m => Monad (Sync m) where
     case ra of
       Left _ -> pure ()
       Right (a, as') -> do
-        rb <- lift . P.next . synchronously $ f a
+        rb <- lift . P.next . _synchronously $ f a
         case rb of
           Left _ -> pure ()
           Right (b, _) -> do
             P.yield b
-            synchronously $ Sync as' >>= f
+            _synchronously $ Sync as' >>= f

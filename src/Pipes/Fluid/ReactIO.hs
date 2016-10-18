@@ -33,7 +33,7 @@ newtype ReactIO m a = ReactIO
   { _reactivelyIO :: P.Producer a m ()
   }
 
-makeClassyFor "HasReactIO" "reactIO" [("_reactivelyIO", "reactivelyIO")] ''ReactIO
+makeClassy ''ReactIO
 makeWrapped ''ReactIO
 
 instance Monad m => Functor (ReactIO m) where

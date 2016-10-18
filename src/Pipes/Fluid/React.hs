@@ -27,7 +27,7 @@ newtype React m a = React
   { _reactively :: P.Producer a m ()
   }
 
-makeClassyFor "HasReact" "react" [("_reactively", "reactively")] ''React
+makeClassy ''React
 makeWrapped ''React
 
 instance Monad m => Functor (React m) where
@@ -77,7 +77,7 @@ apReact pf pa (React fs) (React as) = React $ do
         -- use previous a to emit an @f a@
         Just a -> do
           P.yield $ f a
-          reactively $ apReact (Just f) pa (React fs') (React as)
+          _reactively $ apReact (Just f) pa (React fs') (React as)
     -- @fs@ failed/retry/blocked, @as@ produced something
     Right (Right (Right (a, as'))) ->
       case pf of
@@ -87,7 +87,7 @@ apReact pf pa (React fs) (React as) = React $ do
         -- use previous a to emit an @f a@
         Just f -> do
           P.yield $ f a
-          reactively $ apReact pf (Just a) (React fs) (React as')
+          _reactively $ apReact pf (Just a) (React fs) (React as')
     -- @fs@ produced something,   @as@ ended
     Left (Right (f, fs'), Left _) ->
       case pa of
@@ -109,7 +109,7 @@ apReact pf pa (React fs) (React as) = React $ do
     -- both @fs@ and @as@ produced something
     Left (Right (f, fs'), Right (a, as')) -> do
           P.yield $ f a
-          reactively $ apReact (Just f) (Just a) (React fs') (React as')
+          _reactively $ apReact (Just f) (Just a) (React fs') (React as')
  where
   nextF = P.next fs
   nextA = P.next as
