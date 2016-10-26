@@ -13,8 +13,10 @@
 module Pipes.Fluid.ReactIO
   ( HasReactIO(..)
   , ReactIO(..)
+  , mergeIO
   ) where
 
+import Control.Applicative
 import qualified Control.Concurrent.Async.Lifted.Safe as A
 import qualified Control.Concurrent.STM as S
 import Control.Lens
@@ -142,3 +144,46 @@ instance (MonadBaseControl IO m, Forall (A.Pure m)) => Applicative (ReactIO m) w
    pure = ReactIO . P.yield
   -- 'ap' doesn't know about initial values
    (<*>) = apReactiveIO Nothing Nothing
+
+
+mergeIO ::forall m a b. (MonadBaseControl IO m, Forall (A.Pure m)) =>
+  ReactIO m a -> ReactIO m b ->ReactIO m (Either a b)
+mergeIO (ReactIO as) (ReactIO bs) = ReactIO $ do
+  aa <- lift $ A.async $ P.next as
+  ab <- lift $ A.async $ P.next bs
+  mergeIO' True aa ab
+
+mergeIO' :: forall m a b. (MonadBaseControl IO m, Forall (A.Pure m)) =>
+  Bool
+  -> A.Async (Either () (a, P.Producer a m ()))
+  -> A.Async (Either () (b, P.Producer b m ()))
+  -> P.Producer (Either a b) m ()
+mergeIO' tryAsFirst ma mb = do
+  r <- if tryAsFirst
+          then lift $ liftBase . S.atomically $
+               (Left <$> A.waitSTM ma) <|> (Right <$> A.waitSTM mb)
+          else lift $ liftBase . S.atomically $
+               (Right <$> A.waitSTM mb) <|> (Left <$> A.waitSTM ma)
+  case r of
+    Left (Left _) -> do
+      r' <- lift $ A.wait mb
+      case r' of
+        Left _ -> pure ()
+        (Right (b, bs')) -> do
+            P.yield $ Right b
+            bs' P.>-> PP.map Right
+    Right (Left _) -> do
+      r' <- lift $ A.wait ma
+      case r' of
+        Left _ -> pure ()
+        (Right (a, as')) -> do
+            P.yield $ Left a
+            as' P.>-> PP.map Left
+    Left (Right (a, as')) -> do
+      P.yield $ Left a
+      ma' <- lift $ A.async $ P.next as'
+      mergeIO' False ma' mb
+    Right (Right (b, bs')) -> do
+      P.yield $ Right b
+      mb' <- lift $ A.async $ P.next bs'
+      mergeIO' True ma mb'

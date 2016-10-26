@@ -33,11 +33,13 @@ sig1 = do
 
 sig2 :: Monad m => P.Producer Int m ()
 sig2 = do
+  P.yield 10
   P.yield 20
   P.yield 30
   P.yield 40
   P.yield 50
   P.yield 60
+  P.yield 70
 
 stmSig :: TMVar Int -> P.Producer Int STM ()
 stmSig v = forever $ do
@@ -137,6 +139,7 @@ testReactIO = testSig $ \stmSig1 stmSig2 -> do
                                 )
     P.>-> sigConsumer
 
+
 testReactIdentityTIO :: IO ()
 testReactIdentityTIO = testSig $ \stmSig1 stmSig2 -> do
   putStrLn "\nReact IdentityT IO: reactively yield under 't IO' using lifted-async."
@@ -146,6 +149,20 @@ testReactIdentityTIO = testSig $ \stmSig1 stmSig2 -> do
                                                )
     P.>-> hoist lift sigConsumer
 
+testReactMerge :: IO ()
+testReactMerge = testSig $ \stmSig1 stmSig2 -> do
+  putStrLn "\nReact Merge: yield a value whenever any producer yields a value"
+  P.runEffect $ hoist atomically (PF._reactively $
+                                  PF.merge (PF.React stmSig1) (PF.React stmSig2)) P.>-> sigConsumer
+
+
+testReactIOMerge :: IO ()
+testReactIOMerge = testSig $ \stmSig1 stmSig2 -> do
+  putStrLn "\nReacIOt Merge: yield a value whenever any producer yields a value"
+  P.runEffect $  PF._reactivelyIO (PF.mergeIO
+                                   (PF.ReactIO (hoist atomically stmSig1))
+                                   (PF.ReactIO (hoist atomically stmSig2))) P.>-> sigConsumer
+
 main :: IO ()
 main = do
   testSync
@@ -153,3 +170,5 @@ main = do
   testReactIdentityTSTM
   testReactIO
   testReactIdentityTIO
+  testReactMerge
+  testReactIOMerge

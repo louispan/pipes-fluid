@@ -13,6 +13,7 @@ module Pipes.Fluid.React
   ( HasReact(..)
   , React(..)
   , bothOrEither
+  , merge
   ) where
 
 import Control.Applicative
@@ -122,3 +123,33 @@ instance (Alternative m, Monad m) => Applicative (React m) where
   pure = React . P.yield
   -- 'ap' doesn't know about initial values
   (<*>) = apReact Nothing Nothing
+
+-- Combine signals with a initial preference for the left signal
+merge :: (Alternative m, Monad m) => React m a -> React m b -> React m (Either a b)
+merge (React as) (React bs) = React $ merge' True (P.next as) (P.next bs)
+ where
+  merge' tryAsFirst ma mb = do
+    r <- if tryAsFirst
+         then lift $ (Left <$> ma) <|> (Right <$> mb)
+         else lift $ (Right <$> mb) <|> (Left <$> ma)
+    case r of
+      Left (Left _) -> do
+        r' <- lift mb
+        case r' of
+          Left _ -> pure ()
+          (Right (b, bs')) -> do
+              P.yield $ Right b
+              bs' P.>-> PP.map Right
+      Right (Left _) -> do
+        r' <- lift ma
+        case r' of
+          Left _ -> pure ()
+          (Right (a, as')) -> do
+              P.yield $ Left a
+              as' P.>-> PP.map Left
+      Left (Right (a, as')) -> do
+        P.yield $ Left a
+        merge' False (P.next as') mb
+      Right (Right (b, bs')) -> do
+        P.yield $ Right b
+        merge' True ma (P.next bs')
