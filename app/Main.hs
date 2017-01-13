@@ -151,14 +151,14 @@ testReactIdentityTIO = testSig $ \stmSig1 stmSig2 -> do
 
 testReactMerge :: IO ()
 testReactMerge = testSig $ \stmSig1 stmSig2 -> do
-  putStrLn "\nReact Merge: yield a value whenever any producer yields a value"
+  putStrLn "\nReact Merge: yield a Left/Right value depending on which producer yields a value"
   P.runEffect $ hoist atomically (PF._reactively $
                                   PF.merge (PF.React stmSig1) (PF.React stmSig2)) P.>-> sigConsumer
 
 
 testReactIOMerge :: IO ()
 testReactIOMerge = testSig $ \stmSig1 stmSig2 -> do
-  putStrLn "\nReacIOt Merge: yield a value whenever any producer yields a value"
+  putStrLn "\nReactIO Merge: yield a Left/Right value depending on which producer yields a value"
   P.runEffect $  PF._reactivelyIO (PF.mergeIO
                                    (PF.ReactIO (hoist atomically stmSig1))
                                    (PF.ReactIO (hoist atomically stmSig2))) P.>-> sigConsumer

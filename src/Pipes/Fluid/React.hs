@@ -12,14 +12,15 @@
 module Pipes.Fluid.React
   ( HasReact(..)
   , React(..)
-  , bothOrEither
   , merge
+  , merge'
   ) where
 
 import Control.Applicative
 import Control.Lens
 import Control.Monad.Trans.Class
 import qualified Pipes as P
+import qualified Pipes.Fluid.Alternative as PFA
 import qualified Pipes.Prelude as PP
 
 -- | The applicative instance of this combines multiple Producers reactively
@@ -34,122 +35,69 @@ makeWrapped ''React
 instance Monad m => Functor (React m) where
   fmap f (React as) = React $ as P.>-> PP.map f
 
-bothOrEither :: Alternative f => f a -> f b -> f (Either (a, b) (Either a b))
-bothOrEither left right =
-  (curry Left <$> left <*> right)
-  <|>
-  (Right . Left <$> left)
-  <|>
-  (Right . Right <$> right)
-
 -- | Reactively combines two producers, given initial values to use when the producer is blocked/failed.
 -- This only works for Alternative m where failure means there was no effects, eg. 'Control.Concurrent.STM', or @MonadTrans t => t STM@.
-apReact :: (Alternative m, Monad m) =>
-  Maybe (a -> b)
-  -> Maybe a
-  -> React m (a -> b)
-  -> React m a
-  -> React m b
-apReact pf pa (React fs) (React as) = React $ do
-  r <- lift $ bothOrEither nextF nextA -- use the Alternative of m, not P.Proxy
-  case r of
-    -- both fs and as have ended
-    Left (Left _, Left _) -> pure ()
-    -- @fs@ ended,                @as@ failed/retry/blocked
-    Right (Left (Left _)) ->
-      -- check previous fs
-      case pf of
-        -- We never got a value from fs, so we'll never be able to produce a value
-        Nothing -> pure ()
-        Just f -> mapAs f as
-    -- @fs@ failed/retry/blocked, @as@ ended
-    Right (Right (Left _)) ->
-      -- check previous as
-      case pa of
-        -- We never got a value from as, so we'll never be able to produce a value
-        Nothing -> pure ()
-        Just a -> mapFs a fs
-    -- @fs@ produced something,   @as@ failed/retry/blocked
-    Right (Left (Right (f, fs'))) ->
-      case pa of
-        -- never got anything from @as@, can't do anything yet.
-        -- fail/retry/block until we get something from @as@
-        Nothing -> lift empty
-        -- use previous a to emit an @f a@
-        Just a -> do
-          P.yield $ f a
-          _reactively $ apReact (Just f) pa (React fs') (React as)
-    -- @fs@ failed/retry/blocked, @as@ produced something
-    Right (Right (Right (a, as'))) ->
-      case pf of
-        -- never got anything from @fs@, can't do anything yet.
-        -- fail/retry/block until we get something from @fs@
-        Nothing -> lift empty
-        -- use previous a to emit an @f a@
-        Just f -> do
-          P.yield $ f a
-          _reactively $ apReact pf (Just a) (React fs) (React as')
-    -- @fs@ produced something,   @as@ ended
-    Left (Right (f, fs'), Left _) ->
-      case pa of
-        -- never got anything from @as@, so we'll never be able to produce a value
-        Nothing -> pure ()
-        -- use previous a to emit an @f a@
-        Just a -> do
-          P.yield $ f a
-          mapFs a fs'
-    -- @fs@ ended,                @as@ produced something
-    Left (Left _, Right (a, as')) ->
-      case pf of
-        -- never got anything from @fs@, so we'll never be able to produce a value
-        Nothing -> pure ()
-        -- use previous a to emit an @f a@
-        Just f -> do
-          P.yield $ f a
-          mapAs f as'
-    -- both @fs@ and @as@ produced something
-    Left (Right (f, fs'), Right (a, as')) -> do
-          P.yield $ f a
-          _reactively $ apReact (Just f) (Just a) (React fs') (React as')
- where
-  nextF = P.next fs
-  nextA = P.next as
-  -- transform remaining @as@ like fmap
-  mapAs f as' = as' P.>-> PP.map f
-  -- transform remaining @fs@ like fmap
-  mapFs a fs' = fs' P.>-> PP.map ($ a)
-
 instance (Alternative m, Monad m) => Applicative (React m) where
   pure = React . P.yield
-  -- 'ap' doesn't know about initial values
-  (<*>) = apReact Nothing Nothing
+  fs <*> as = React $
+    P.for (_reactively $ merge fs as) $ \r ->
+        case r of
+            Left (f, a) -> P.yield $ f a
+            Right (Left (f, Just a)) -> P.yield $ f a
+            Right (Right (Just f, a)) -> P.yield $ f a
+            -- never got anything from one of the signals, can't do anything yet.
+            -- fail/retry/block until we get something from the other signal
+            Right (Left (_, Nothing)) -> lift empty
+            Right (Right (Nothing, _)) -> lift empty
 
--- Combine signals with a initial preference for the left signal
-merge :: (Alternative m, Monad m) => React m a -> React m b -> React m (Either a b)
-merge (React as) (React bs) = React $ merge' True (P.next as) (P.next bs)
- where
-  merge' tryAsFirst ma mb = do
-    r <- if tryAsFirst
-         then lift $ (Left <$> ma) <|> (Right <$> mb)
-         else lift $ (Right <$> mb) <|> (Left <$> ma)
+-- | Reactively combines two producers, given initial values to use when the produce hasn't produced anything yet
+-- Combine two signals, and returns a signal that emits
+-- @Either bothfired (Either (leftFired, previousRight) (previousLeft, rightFired))@.
+-- This only works for Alternative m where failure means there was no effects, eg. 'Control.Concurrent.STM', or @MonadTrans t => t STM@.
+merge' :: (Alternative m, Monad m) =>
+  Maybe x
+  -> Maybe y
+  -> React m x
+  -> React m y
+  -> React m (Either (x, y) (Either (x, Maybe y) (Maybe x, y)))
+merge' px py (React xs) (React ys) = React $ do
+    -- use the Alternative of m, not P.Proxy
+    r <- lift $ PFA.bothOrEither nextX nextY
     case r of
-      Left (Left _) -> do
-        r' <- lift mb
-        case r' of
-          Left _ -> pure ()
-          (Right (b, bs')) -> do
-              P.yield $ Right b
-              bs' P.>-> PP.map Right
-      Right (Left _) -> do
-        r' <- lift ma
-        case r' of
-          Left _ -> pure ()
-          (Right (a, as')) -> do
-              P.yield $ Left a
-              as' P.>-> PP.map Left
-      Left (Right (a, as')) -> do
-        P.yield $ Left a
-        merge' False (P.next as') mb
-      Right (Right (b, bs')) -> do
-        P.yield $ Right b
-        merge' True ma (P.next bs')
+        -- both fs and as have ended
+        Left (Left _, Left _) -> pure ()
+        -- @xs@ ended,                @ys@ failed/retry/blocked
+        Right (Left (Left _)) -> mapYs ys
+        -- @xs@ failed/retry/blocked, @ys@ ended
+        Right (Right (Left _)) -> mapXs xs
+        -- @xs@ produced something,   @ys@ failed/retry/blocked
+        Right (Left (Right (x, xs'))) -> do
+            P.yield $ Right (Left (x, py))
+            _reactively $ merge' (Just x) py (React xs') (React ys)
+        -- @xs@ failed/retry/blocked, @ys@ produced something
+        Right (Right (Right (y, ys'))) -> do
+            P.yield $ Right (Right (px, y))
+            _reactively $ merge' px (Just y) (React xs) (React ys')
+        -- @xs@ produced something,   @ys@ ended
+        Left (Right (x, xs'), Left _) -> do
+            P.yield $ Right (Left (x, py))
+            mapXs xs'
+        -- @fs@ ended,                @as@ produced something
+        Left (Left _, Right (y, ys')) -> do
+            P.yield $ Right (Right (px, y))
+            mapYs ys'
+        -- both @fs@ and @as@ produced something
+        Left (Right (x, xs'), Right (y, ys')) -> do
+              P.yield $ Left (x, y)
+              _reactively $ merge' (Just x) (Just y) (React xs') (React ys')
+ where
+  nextX = P.next xs
+  nextY = P.next ys
+  -- transform remaining @ys@ like fmap
+  mapYs ys' = ys' P.>-> PP.map (\y -> Right (Right (px, y)))
+  -- transform remaining @xs@ like fmap
+  mapXs xs' = xs' P.>-> PP.map (\x -> Right (Left (x, py)))
+
+-- | A simpler version of merge', with the initial values as Nothing
+merge :: (Alternative m, Monad m) => React m x -> React m y -> React m (Either (x, y) (Either (x, Maybe y) (Maybe x, y)))
+merge = merge' Nothing Nothing
