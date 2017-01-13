@@ -1,3 +1,6 @@
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE MonomorphismRestriction #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -13,11 +16,23 @@ import Control.Monad
 import Control.Monad.Morph
 import Control.Monad.Trans.Control
 import Control.Monad.Trans.Identity
+import Control.Monad.State.Strict
 import Data.Constraint.Forall (Forall)
 import qualified Pipes as P
+import qualified Pipes.Lift as PL
 import qualified Pipes.Fluid.React as PF
 import qualified Pipes.Fluid.ReactIO as PF
 import qualified Pipes.Fluid.Sync as PF
+import qualified Pipes.Misc as PM
+import Control.Lens
+import qualified Pipes.Internal as PI
+
+data Model = Model
+    { modelCounter1 :: Int
+    , modelCounter2 :: Int
+    } deriving (Eq, Show)
+
+makeFields ''Model
 
 sig1 :: Monad m => P.Producer Int m ()
 sig1 = do
@@ -52,40 +67,23 @@ sigFeeder v i = forever $ do
   a <- P.await
   lift $ atomically $ putTMVar v a
 
-syncSig :: P.Producer Int STM () -> P.Producer Int STM () -> PF.Sync STM (Int, Int, Int)
-syncSig as bs = do
+syncAdd :: P.Producer Int STM () -> P.Producer Int STM () -> PF.Sync STM (Int, Int, Int)
+syncAdd as bs = do
   a <- PF.Sync as
   b <- PF.Sync bs
   pure (a, b, a + b)
 
-reactSig' :: (Alternative m, Monad m, Num a) =>
+reactAdd :: (Alternative m, Monad m, Num a) =>
   P.Producer a m ()
   -> P.Producer a m ()
   -> PF.React m (a, a, a)
-reactSig' as bs = (\a b -> (a, b, a + b)) <$> PF.React as <*> PF.React bs
+reactAdd as bs = (\a b -> (a, b, a + b)) <$> PF.React as <*> PF.React bs
 
-reactIOSig' :: (MonadBaseControl IO m, Forall (A.Pure m), Num a) =>
+reactIOAdd :: (MonadBaseControl IO m, Forall (A.Pure m), Num a) =>
   P.Producer a m ()
   -> P.Producer a m ()
   -> PF.ReactIO m (a, a, a)
-reactIOSig' as bs = (\a b -> (a, b, a + b)) <$> PF.ReactIO as <*> PF.ReactIO bs
-
-reactSTMSig :: P.Producer Int STM () -> P.Producer Int STM () -> PF.React STM (Int, Int, Int)
-reactSTMSig = reactSig'
-
-reactIdentityTSTMSig ::
-  P.Producer Int (IdentityT STM) ()
-  -> P.Producer Int (IdentityT STM) ()
-  -> PF.React (IdentityT STM) (Int, Int, Int)
-reactIdentityTSTMSig = reactSig'
-
-reactIdentityTIOSig :: P.Producer Int  (IdentityT IO) ()
-  -> P.Producer Int (IdentityT IO) ()
-  -> PF.ReactIO (IdentityT IO) (Int, Int, Int)
-reactIdentityTIOSig = reactIOSig'
-
-reactIOSig :: P.Producer Int IO () -> P.Producer Int IO () -> PF.ReactIO IO (Int, Int, Int)
-reactIOSig = reactIOSig'
+reactIOAdd as bs = (\a b -> (a, b, a + b)) <$> PF.ReactIO as <*> PF.ReactIO bs
 
 handleBlockedIndefinitely :: BlockedIndefinitelyOnSTM -> IO ()
 handleBlockedIndefinitely = const $ pure ()
@@ -105,35 +103,47 @@ testSig f = do
   killThread x
   killThread y
 
-sigConsumer :: Show a => P.Consumer a IO ()
+sigConsumer :: (MonadIO io, Show a) => P.Consumer a io ()
 sigConsumer = forever $ do
   a <- P.await
-  lift $ print a
+  liftIO $ print a
 
 testSync :: IO ()
 testSync = testSig $ \stmSig1 stmSig2 -> do
   putStrLn "\nSync: only yield a value when both producers yields a value"
-  P.runEffect $ hoist atomically (PF._synchronously $ syncSig stmSig1 stmSig2) P.>-> sigConsumer
+  P.runEffect $ hoist atomically (PF._synchronously $ syncAdd stmSig1 stmSig2) P.>-> sigConsumer
 
 testReactSTM :: IO ()
 testReactSTM = testSig $ \stmSig1 stmSig2 -> do
   putStrLn "\nReact STM: yield a value whenever any producer yields a value"
-  P.runEffect $ hoist atomically (PF._reactively $ reactSTMSig stmSig1 stmSig2) P.>-> sigConsumer
+  P.runEffect $ hoist atomically (PF._reactively $ reactAdd stmSig1 stmSig2) P.>-> sigConsumer
 
 testReactIdentityTSTM :: IO ()
 testReactIdentityTSTM = testSig $ \stmSig1 stmSig2 -> do
   putStrLn "\nReact IdentityT STM: reactively yields under 't STM'"
   runIdentityT $ P.runEffect $ hoist (hoist atomically) (PF._reactively $
-                                   reactIdentityTSTMSig
-                                   (P.hoist lift stmSig1) -- make original producer under IdentityT
-                                   (P.hoist lift stmSig2) -- make original producer under IdentityT
+                                   reactAdd
+                                   (hoist lift stmSig1) -- make original producer under IdentityT
+                                   (hoist lift stmSig2) -- make original producer under IdentityT
                                  )
+    P.>-> P.hoist lift sigConsumer -- make original consumer under IdentityT
+
+testReactStateTSTM :: IO ()
+testReactStateTSTM = testSig $ \stmSig1 stmSig2 -> do
+   putStrLn "\nReact StateT STM: reactively yields under 'StateT STM'"
+   (`evalStateT` (Model 0 0)) $ P.runEffect $ hoist (hoist atomically) (PF._reactively $
+                                 reactAdd
+                                    -- make original producer under StateT
+                                   (PI.unsafeHoist lift stmSig1 P.>-> PM.store id counter1)
+                                   (PI.unsafeHoist lift stmSig2 P.>-> PM.store id counter2)
+                                 )
+    P.>-> PM.retrieve id
     P.>-> P.hoist lift sigConsumer -- make original consumer under IdentityT
 
 testReactIO :: IO ()
 testReactIO = testSig $ \stmSig1 stmSig2 -> do
   putStrLn "\nReact IO: reactively yield under IO using lifted-async."
-  P.runEffect $ PF._reactivelyIO (reactIOSig
+  P.runEffect $ PF._reactivelyIO (reactIOAdd
                                  (hoist atomically stmSig1)
                                  (hoist atomically stmSig2)
                                 )
@@ -143,7 +153,7 @@ testReactIO = testSig $ \stmSig1 stmSig2 -> do
 testReactIdentityTIO :: IO ()
 testReactIdentityTIO = testSig $ \stmSig1 stmSig2 -> do
   putStrLn "\nReact IdentityT IO: reactively yield under 't IO' using lifted-async."
-  runIdentityT $ P.runEffect $ PF._reactivelyIO (reactIdentityTIOSig
+  runIdentityT $ P.runEffect $ PF._reactivelyIO (reactIOAdd
                                                 (hoist (lift . atomically) stmSig1)
                                                 (hoist (lift . atomically) stmSig2)
                                                )
@@ -167,8 +177,10 @@ main :: IO ()
 main = do
   testSync
   testReactSTM
-  testReactIdentityTSTM
   testReactIO
+  testReactIdentityTSTM
   testReactIdentityTIO
+  testReactStateTSTM
+  putStrLn "\nReact StateT IO is unsafe (lift-async detect this as a compile error)"
   testReactMerge
   testReactIOMerge

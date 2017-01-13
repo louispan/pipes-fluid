@@ -38,11 +38,14 @@ executable pipes-fluid-exe
   build-depends:       base
                      , async
                      , constraints
+                     , lens
                      , lifted-async
                      , mmorph
                      , monad-control
+                     , mtl
                      , pipes
                      , pipes-fluid
+                     , pipes-misc
                      , stm
                      , transformers
   default-language:    Haskell2010
