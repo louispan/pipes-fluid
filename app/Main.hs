@@ -111,41 +111,41 @@ sigConsumer = forever $ do
 testSync :: IO ()
 testSync = testSig $ \stmSig1 stmSig2 -> do
   putStrLn "\nSync: only yield a value when both producers yields a value"
-  P.runEffect $ hoist atomically (PF._synchronously $ syncAdd stmSig1 stmSig2) P.>-> sigConsumer
+  P.runEffect $ PI.unsafeHoist atomically (PF._synchronously $ syncAdd stmSig1 stmSig2) P.>-> sigConsumer
 
 testReactSTM :: IO ()
 testReactSTM = testSig $ \stmSig1 stmSig2 -> do
   putStrLn "\nReact STM: yield a value whenever any producer yields a value"
-  P.runEffect $ hoist atomically (PF._reactively $ reactAdd stmSig1 stmSig2) P.>-> sigConsumer
+  P.runEffect $ PI.unsafeHoist atomically (PF._reactively $ reactAdd stmSig1 stmSig2) P.>-> sigConsumer
 
 testReactIdentityTSTM :: IO ()
 testReactIdentityTSTM = testSig $ \stmSig1 stmSig2 -> do
   putStrLn "\nReact IdentityT STM: reactively yields under 't STM'"
   runIdentityT $ P.runEffect $ hoist (hoist atomically) (PF._reactively $
                                    reactAdd
-                                   (hoist lift stmSig1) -- make original producer under IdentityT
-                                   (hoist lift stmSig2) -- make original producer under IdentityT
+                                   (PI.unsafeHoist lift stmSig1) -- make original producer under IdentityT
+                                   (PI.unsafeHoist lift stmSig2) -- make original producer under IdentityT
                                  )
-    P.>-> P.hoist lift sigConsumer -- make original consumer under IdentityT
+    P.>-> PI.unsafeHoist lift sigConsumer -- make original consumer under IdentityT
 
 testReactStateTSTM :: IO ()
 testReactStateTSTM = testSig $ \stmSig1 stmSig2 -> do
    putStrLn "\nReact StateT STM: reactively yields under 'StateT STM'"
-   (`evalStateT` (Model 0 0)) $ P.runEffect $ hoist (hoist atomically) (PF._reactively $
+   (`evalStateT` (Model 0 0)) $ P.runEffect $ PI.unsafeHoist (hoist atomically) (PF._reactively $
                                  reactAdd
                                     -- make original producer under StateT
                                    (PI.unsafeHoist lift stmSig1 P.>-> PM.store id counter1)
                                    (PI.unsafeHoist lift stmSig2 P.>-> PM.store id counter2)
                                  )
     P.>-> PM.retrieve id
-    P.>-> P.hoist lift sigConsumer -- make original consumer under IdentityT
+    P.>-> PI.unsafeHoist lift sigConsumer -- make original consumer under IdentityT
 
 testReactIO :: IO ()
 testReactIO = testSig $ \stmSig1 stmSig2 -> do
   putStrLn "\nReact IO: reactively yield under IO using lifted-async."
   P.runEffect $ PF._reactivelyIO (reactIOAdd
-                                 (hoist atomically stmSig1)
-                                 (hoist atomically stmSig2)
+                                 (PI.unsafeHoist atomically stmSig1)
+                                 (PI.unsafeHoist atomically stmSig2)
                                 )
     P.>-> sigConsumer
 
@@ -154,15 +154,15 @@ testReactIdentityTIO :: IO ()
 testReactIdentityTIO = testSig $ \stmSig1 stmSig2 -> do
   putStrLn "\nReact IdentityT IO: reactively yield under 't IO' using lifted-async."
   runIdentityT $ P.runEffect $ PF._reactivelyIO (reactIOAdd
-                                                (hoist (lift . atomically) stmSig1)
-                                                (hoist (lift . atomically) stmSig2)
+                                                (PI.unsafeHoist (lift . atomically) stmSig1)
+                                                (PI.unsafeHoist (lift . atomically) stmSig2)
                                                )
     P.>-> hoist lift sigConsumer
 
 testReactMerge :: IO ()
 testReactMerge = testSig $ \stmSig1 stmSig2 -> do
   putStrLn "\nReact Merge: yield a Left/Right value depending on which producer yields a value"
-  P.runEffect $ hoist atomically (PF._reactively $
+  P.runEffect $ PI.unsafeHoist atomically (PF._reactively $
                                   PF.merge (PF.React stmSig1) (PF.React stmSig2)) P.>-> sigConsumer
 
 
@@ -170,8 +170,8 @@ testReactIOMerge :: IO ()
 testReactIOMerge = testSig $ \stmSig1 stmSig2 -> do
   putStrLn "\nReactIO Merge: yield a Left/Right value depending on which producer yields a value"
   P.runEffect $  PF._reactivelyIO (PF.mergeIO
-                                   (PF.ReactIO (hoist atomically stmSig1))
-                                   (PF.ReactIO (hoist atomically stmSig2))) P.>-> sigConsumer
+                                   (PF.ReactIO (PI.unsafeHoist atomically stmSig1))
+                                   (PF.ReactIO (PI.unsafeHoist atomically stmSig2))) P.>-> sigConsumer
 
 main :: IO ()
 main = do
