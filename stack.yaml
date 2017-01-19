@@ -37,16 +37,12 @@ resolver: lts-7.2
 # will not be run. This is useful for tweaking upstream packages.
 packages:
 - '.'
-- location:
-   git: https://github.com/louispan/pipes-category.git
-   commit: HEAD
-- location:
-   git: https://github.com/louispan/pipes-misc.git
-   commit: HEAD
 
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)
-extra-deps: []
+extra-deps:
+- pipes-category-0.1.0.0
+- pipes-misc-0.1.0.0
 
 # Override default flag values for local packages and extra-deps
 flags: {}
