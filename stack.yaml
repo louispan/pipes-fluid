@@ -37,12 +37,12 @@ resolver: lts-7.2
 # will not be run. This is useful for tweaking upstream packages.
 packages:
 - '.'
+- '/Users/louis/repo/haskell/pipes-misc'
+- '/Users/louis/repo/haskell/pipes-category'
 
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)
-extra-deps:
-- pipes-category-0.1.0.0
-- pipes-misc-0.1.0.0
+extra-deps: []
 
 # Override default flag values for local packages and extra-deps
 flags: {}

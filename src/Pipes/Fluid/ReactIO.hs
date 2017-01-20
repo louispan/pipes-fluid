@@ -11,8 +11,7 @@
 {-# LANGUAGE UndecidableInstances #-}
 
 module Pipes.Fluid.ReactIO
-    ( HasReactIO(..)
-    , ReactIO(..)
+    ( ReactIO(..)
     , mergeIO
     , mergeIO'
     ) where
@@ -35,30 +34,26 @@ import qualified Pipes.Prelude as PP
 -- so if the monad is something like (StateT s IO), then the state will alternate
 -- between the two input producers, which is most likely not what you want.
 newtype ReactIO m a = ReactIO
-    { _reactivelyIO :: P.Producer a m ()
+    { reactivelyIO :: P.Producer a m ()
     }
 
-makeClassy ''ReactIO
 makeWrapped ''ReactIO
 
 instance Monad m => Functor (ReactIO m) where
   fmap f (ReactIO as) = ReactIO $ as P.>-> PP.map f
 
-instance (MonadBaseControl IO m, Forall (A.Pure m)) =>
-         Applicative (ReactIO m) where
+instance (MonadBaseControl IO m, Forall (A.Pure m)) => Applicative (ReactIO m) where
     pure = ReactIO . P.yield
     -- 'ap' doesn't know about initial values
-    fs <*> as =
-        ReactIO $
-        P.for (_reactivelyIO $ mergeIO fs as) $ \r ->
-            case r of
-                Left (f, a) -> P.yield $ f a
-                Right (Left (f, Just a)) -> P.yield $ f a
-                Right (Right (Just f, a)) -> P.yield $ f a
-                -- never got anything from one of the signals, can't do anything yet.
-                -- drop the event
-                Right (Left (_, Nothing)) -> pure ()
-                Right (Right (Nothing, _)) -> pure ()
+    fs <*> as = ReactIO $ P.for (reactivelyIO $ mergeIO fs as) $ \r ->
+        case r of
+            Left (f, a) -> P.yield $ f a
+            Right (Left (f, Just a)) -> P.yield $ f a
+            Right (Right (Just f, a)) -> P.yield $ f a
+            -- never got anything from one of the signals, can't do anything yet.
+            -- drop the event
+            Right (Left (_, Nothing)) -> pure ()
+            Right (Right (Nothing, _)) -> pure ()
 
 -- | Reactively combines two producers, given initial values to use when the produce hasn't produced anything yet
 -- Combine two signals, and returns a signal that emits
@@ -75,72 +70,70 @@ mergeIO' :: (MonadBaseControl IO m, Forall (A.Pure m)) =>
   -> ReactIO m y
   -> ReactIO m (Either (x, y) (Either (x, Maybe y) (Maybe x, y)))
 mergeIO' px py (ReactIO xs) (ReactIO ys) = ReactIO $ do
-  ax <- lift $ A.async $ P.next xs
-  ay <- lift $ A.async $ P.next ys
-  doMergeIO px py ax ay
-
-mergeIO :: (MonadBaseControl IO m, Forall (A.Pure m)) =>
-  ReactIO m x
-  -> ReactIO m y
-  -> ReactIO m (Either (x, y) (Either (x, Maybe y) (Maybe x, y)))
-mergeIO = mergeIO' Nothing Nothing
-
-doMergeIO :: (MonadBaseControl IO m, Forall (A.Pure m)) =>
-     Maybe x
-  -> Maybe y
-  -> A.Async (Either () (x, P.Producer x m ()))
-  -> A.Async (Either () (y, P.Producer y m ()))
-  -> P.Producer (Either (x, y) (Either (x, Maybe y) (Maybe x, y))) m ()
-doMergeIO px py ax ay = do
-    r <-
-        lift $
-        liftBase . S.atomically $ PFA.bothOrEither (A.waitSTM ax) (A.waitSTM ay)
-    case r of
-        Left (Left _, Left _) -> pure () -- both @ax@ and @ay@ have ended
-        -- @ax@ ended,                @ay@ still waiting
-        Right (Left (Left _)) -> do
-            ry <- lift $ A.wait ay -- wait for @ay@ to return and then
-                                   -- only use @ys@
-            case ry of
-                Left _ -> pure ()
-                Right (y', ys') -> do
-                    P.yield $ Right (Right (px, y'))
-                    mapYs ys'
-        -- @ax@ still waiting,        @ay@ ended
-        Right (Right (Left _)) -> do
-            rx <- lift $ A.wait ax -- wait for @ax@ to retrun and then
-                                   -- only use @xs@
-            case rx of
-                Left _ -> pure ()
-                Right (x', xs') -> do
-                    P.yield $ Right (Left (x', py))
-                    mapXs xs'
-        -- @ax@ produced something,   @ay@ still waiting
-        Right (Left (Right (x, xs'))) -> do
-            P.yield $ Right (Left (x, py))
-            ax' <- lift $ A.async $ P.next xs'
-            doMergeIO (Just x) py ax' ay
-        -- @ax@ still waiting,        @ay@ produced something
-        Right (Right (Right (y, ys'))) -> do
-            P.yield $ Right (Right (px, y))
-            ay' <- lift $ A.async $ P.next ys'
-            doMergeIO px (Just y) ax ay'
-        -- @ax@ produced something,   @ay@ ended
-        Left (Right (x, xs'), Left _) -> do
-            P.yield $ Right (Left (x, py))
-            mapXs xs'
-        -- @af@ ended,                @aa@ produced something
-        Left (Left _, Right (y, ys')) -> do
-            P.yield $ Right (Right (px, y))
-            mapYs ys'
-        -- both @fs@ and @as@ produced something
-        Left (Right (x, xs'), Right (y, ys')) -> do
-            P.yield $ Left (x, y)
-            ax' <- lift $ A.async $ P.next xs'
-            ay' <- lift $ A.async $ P.next ys'
-            doMergeIO (Just x) (Just y) ax' ay'
+    ax <- lift $ A.async $ P.next xs
+    ay <- lift $ A.async $ P.next ys
+    doMergeIO px py ax ay
   where
-    -- transform remaining @ys@ like fmap
-    mapYs ys' = ys' P.>-> PP.map (\y -> Right (Right (px, y)))
-    -- transform remaining @xs@ like fmap
-    mapXs xs' = xs' P.>-> PP.map (\x -> Right (Left (x, py)))
+    doMergeIO :: (MonadBaseControl IO m, Forall (A.Pure m)) =>
+         Maybe x
+      -> Maybe y
+      -> A.Async (Either () (x, P.Producer x m ()))
+      -> A.Async (Either () (y, P.Producer y m ()))
+      -> P.Producer (Either (x, y) (Either (x, Maybe y) (Maybe x, y))) m ()
+    doMergeIO px py ax ay = do
+        r <-
+            lift $
+            liftBase . S.atomically $ PFA.bothOrEither (A.waitSTM ax) (A.waitSTM ay)
+        case r of
+            Left (Left _, Left _) -> pure () -- both @ax@ and @ay@ have ended
+            -- @ax@ ended,                @ay@ still waiting
+            Right (Left (Left _)) -> do
+                ry <- lift $ A.wait ay -- wait for @ay@ to return and then
+                                       -- only use @ys@
+                case ry of
+                    Left _ -> pure ()
+                    Right (y', ys') -> do
+                        P.yield $ useRight y'
+                        ys' P.>-> PP.map useRight
+            -- @ax@ still waiting,        @ay@ ended
+            Right (Right (Left _)) -> do
+                rx <- lift $ A.wait ax -- wait for @ax@ to retrun and then
+                                       -- only use @xs@
+                case rx of
+                    Left _ -> pure ()
+                    Right (x', xs') -> do
+                        P.yield $ useLeft x'
+                        xs' P.>-> PP.map useLeft
+            -- @ax@ produced something,   @ay@ still waiting
+            Right (Left (Right (x, xs'))) -> do
+                P.yield $ useLeft x
+                ax' <- lift $ A.async $ P.next xs'
+                doMergeIO (Just x) py ax' ay
+            -- @ax@ still waiting,        @ay@ produced something
+            Right (Right (Right (y, ys'))) -> do
+                P.yield $ useRight y
+                ay' <- lift $ A.async $ P.next ys'
+                doMergeIO px (Just y) ax ay'
+            -- @ax@ produced something,   @ay@ ended
+            Left (Right (x, xs'), Left _) -> do
+                P.yield $ useLeft x
+                xs' P.>-> PP.map useLeft
+            -- @af@ ended,                @aa@ produced something
+            Left (Left _, Right (y, ys')) -> do
+                P.yield $ useRight y
+                ys' P.>-> PP.map useRight
+            -- both @fs@ and @as@ produced something
+            Left (Right (x, xs'), Right (y, ys')) -> do
+                P.yield $ Left (x, y)
+                ax' <- lift $ A.async $ P.next xs'
+                ay' <- lift $ A.async $ P.next ys'
+                doMergeIO (Just x) (Just y) ax' ay'
+      where
+        useRight y = Right (Right (px, y))
+        useLeft x = Right (Left (x, py))
+
+mergeIO :: (MonadBaseControl IO m, Forall (A.Pure m))
+    => ReactIO m x
+    -> ReactIO m y
+    -> ReactIO m (Either (x, y) (Either (x, Maybe y) (Maybe x, y)))
+mergeIO = mergeIO' Nothing Nothing

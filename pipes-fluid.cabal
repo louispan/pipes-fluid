@@ -31,31 +31,25 @@ library
   ghc-options:         -Wall
   default-language:    Haskell2010
 
-executable pipes-fluid-exe
-  hs-source-dirs:      app
-  main-is:             Main.hs
-  ghc-options:         -Wall -threaded -rtsopts -with-rtsopts=-N
-  build-depends:       base >= 4.7 && < 5
-                     , async >= 2 && < 3
-                     , constraints >= 0.4 && < 1
-                     , lens >= 4 && < 5
-                     , lifted-async >= 0.8 && < 1
-                     , mmorph >= 1 && < 2
-                     , monad-control >= 1 && < 2
-                     , mtl >= 2 && < 3
-                     , pipes >= 4 && < 5
-                     , pipes-fluid >= 0.1.0.0 && < 1
-                     , pipes-misc >= 0.1.0.0 && < 1
-                     , stm >= 2.4 && < 3
-                     , transformers >= 0.4 && < 0.6
-  default-language:    Haskell2010
-
 test-suite pipes-fluid-test
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test
   main-is:             Spec.hs
   build-depends:       base >= 4.7 && < 5
-                     , pipes-fluid >= 0.3.0.0 && < 1
+                     , async >= 2 && < 3
+                     , constraints >= 0.4 && < 1
+                     , lens >= 4 && < 5
+                     , hspec >= 2 && < 3
+                     , lifted-async >= 0.8 && < 1
+                     , mmorph >= 1 && < 2
+                     , monad-control >= 1 && < 2
+                     , mtl >= 2 && < 3
+                     , pipes >= 4 && < 5
+                     , pipes-concurrency >= 2 && < 3
+                     , pipes-fluid
+                     , pipes-misc >= 0.2.0.0 && < 1
+                     , stm >= 2.4 && < 3
+                     , transformers >= 0.4 && < 0.6
   ghc-options:         -Wall -threaded -rtsopts -with-rtsopts=-N
   default-language:    Haskell2010
 
