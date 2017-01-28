@@ -1,6 +1,6 @@
 name:                pipes-fluid
 version:             0.3.0.0
-synopsis:            Allows reactively combining 'Pipes.Producer's so that a value is yielded when either Producer yields a value.
+synopsis:            Reactively combines Producers so that a value is yielded whenever either producers yields.
 description:         Please see README.md
 homepage:            https://github.com/louispan/pipes-fluid#readme
 license:             BSD3
