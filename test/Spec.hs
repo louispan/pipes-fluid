@@ -7,6 +7,7 @@
 
 module Main where
 
+import Control.Applicative
 import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Lens
@@ -15,15 +16,15 @@ import Control.Monad.Morph as M
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Identity
 import Data.Foldable
+import Data.Maybe
 import qualified Pipes as P
+import qualified Pipes.Concurrent as PC
 import qualified Pipes.Fluid.React as PF
 import qualified Pipes.Fluid.ReactIO as PF
 import qualified Pipes.Fluid.Sync as PF
 import qualified Pipes.Misc as PM
 import qualified Pipes.Prelude as PP
-import qualified Pipes.Concurrent as PC
 import Test.Hspec
-import Data.Maybe
 
 data Model = Model
     { modelCounter1 :: Int
@@ -63,11 +64,21 @@ testSig' quitEarly f = do
     -- make time delayed signals
     void $ forkIO $ do
         P.runEffect $ sig1 P.>-> delay 30 P.>-> hoist atomically (PM.toOutputSTM o1)
-        when quitEarly (atomically $ q1 *> q2)
+        when quitEarly $ atomically $ do
+            -- wait for input to be empty
+            r <- PC.recv i1 <|> pure Nothing
+            case r of
+                Nothing -> q1 *> q2
+                Just _ -> retry
         putMVar feederFinished1 ()
     void $ forkIO $ do
         P.runEffect $ sig2 P.>-> delay 50 P.>-> hoist atomically (PM.toOutputSTM o2)
-        when quitEarly (atomically $ q1 *> q2)
+        when quitEarly $ atomically $ do
+            -- wait for input to be empty
+            r <- PC.recv i2 <|> pure Nothing
+            case r of
+                Nothing -> q1 *> q2
+                Just _ -> retry
         putMVar feederFinished2 ()
     -- thread to destroy PC Input when both feeders have finished
     void $ forkIO $ do
