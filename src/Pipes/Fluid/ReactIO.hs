@@ -69,10 +69,10 @@ mergeIO' :: (MonadBaseControl IO m, Forall (A.Pure m)) =>
   -> ReactIO m x
   -> ReactIO m y
   -> ReactIO m (Either (x, y) (Either (x, Maybe y) (Maybe x, y)))
-mergeIO' px py (ReactIO xs) (ReactIO ys) = ReactIO $ do
-    ax <- lift $ A.async $ P.next xs
-    ay <- lift $ A.async $ P.next ys
-    doMergeIO px py ax ay
+mergeIO' px_ py_ (ReactIO xs_) (ReactIO ys_) = ReactIO $ do
+    ax <- lift $ A.async $ P.next xs_
+    ay <- lift $ A.async $ P.next ys_
+    doMergeIO px_ py_ ax ay
   where
     doMergeIO :: (MonadBaseControl IO m, Forall (A.Pure m)) =>
          Maybe x

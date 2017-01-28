@@ -1,6 +1,6 @@
 name:                pipes-fluid
 version:             0.3.0.0
-synopsis:            Applicative instances that allows reactively combining 'Pipes.Producer's so that a value is yielded when either Producer yields a value. This can be used to create a FRP-like reactive signal-network.
+synopsis:            Allows reactively combining 'Pipes.Producer's so that a value is yielded when either Producer yields a value.
 description:         Please see README.md
 homepage:            https://github.com/louispan/pipes-fluid#readme
 license:             BSD3
@@ -8,7 +8,7 @@ license-file:        LICENSE
 author:              Louis Pan
 maintainer:          louis@pan.me
 copyright:           2016 Louis Pan
-category:            Control, Pipes
+category:            Control, Pipes, FRP
 build-type:          Simple
 cabal-version:       >=1.10
 tested-with:         GHC == 7.10.3, GHC == 8.0.1
