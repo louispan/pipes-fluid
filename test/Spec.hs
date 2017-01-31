@@ -22,7 +22,8 @@ import qualified Pipes.Concurrent as PC
 import qualified Pipes.Fluid.React as PF
 import qualified Pipes.Fluid.ReactIO as PF
 import qualified Pipes.Fluid.Sync as PF
-import qualified Pipes.Misc as PM
+import qualified Pipes.Misc.Concurrent as PM
+import qualified Pipes.Misc.State.Strict as PM
 import qualified Pipes.Prelude as PP
 import Test.Hspec
 
