@@ -15,10 +15,12 @@ tested-with:         GHC == 7.10.3, GHC == 8.0.1
 
 library
   hs-source-dirs:      src
-  exposed-modules:     Pipes.Fluid.React
-                     , Pipes.Fluid.ReactIO
-                     , Pipes.Fluid.Sync
-                     , Pipes.Fluid.Alternative
+  exposed-modules:     Pipes.Fluid
+                       Pipes.Fluid.Common
+                       Pipes.Fluid.Internal
+                       Pipes.Fluid.React
+                       Pipes.Fluid.ReactIO
+                       Pipes.Fluid.Sync
   build-depends:       base >= 4.7 && < 5
                      , constraints >= 0.4 && < 1
                      , lens >= 4 && < 5

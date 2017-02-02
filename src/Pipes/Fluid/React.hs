@@ -4,7 +4,6 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE ImpredicativeTypes #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -13,13 +12,15 @@ module Pipes.Fluid.React
     ( React(..)
     , merge
     , merge'
+    , module Pipes.Fluid.Common
     ) where
 
 import Control.Applicative
 import Control.Lens
 import Control.Monad.Trans.Class
 import qualified Pipes as P
-import qualified Pipes.Fluid.Alternative as PFA
+import Pipes.Fluid.Common
+import qualified Pipes.Fluid.Internal as PI
 import qualified Pipes.Prelude as PP
 
 -- | The applicative instance of this combines multiple Producers reactively
@@ -33,6 +34,7 @@ makeWrapped ''React
 instance Monad m =>
          Functor (React m) where
     fmap f (React as) = React $ as P.>-> PP.map f
+    {-# INLINABLE fmap #-}
 
 -- | Reactively combines two producers, given initial values to use when the producer is blocked/failed.
 -- This only works for Alternative m where failure means there was no effects, eg. 'Control.Concurrent.STM', or @MonadTrans t => t STM@.
@@ -40,17 +42,18 @@ instance Monad m =>
 instance (Alternative m, Monad m) =>
          Applicative (React m) where
     pure = React . P.yield
+    {-# INLINABLE pure #-}
+
     fs <*> as =
         React $
         P.for (reactively $ merge fs as) $ \r ->
             case r of
-                Left (f, a) -> P.yield $ f a
-                Right (Left (f, Just a)) -> P.yield $ f a
-                Right (Right (Just f, a)) -> P.yield $ f a
+                Coupled _ f a -> P.yield $ f a
                 -- never got anything from one of the signals, can't do anything yet.
                 -- fail/retry/block until we get something from the other signal
-                Right (Left (_, Nothing)) -> lift empty
-                Right (Right (Nothing, _)) -> lift empty
+                LeftOnly _ _ -> lift empty
+                RightOnly _ _-> lift empty
+    {-# INLINABLE (<*>) #-}
 
 -- | Reactively combines two producers, given initial values to use when the produce hasn't produced anything yet
 -- Combine two signals, and returns a signal that emits
@@ -62,44 +65,61 @@ merge' :: (Alternative m, Monad m) =>
   -> Maybe y
   -> React m x
   -> React m y
-  -> React m (Either (x, y) (Either (x, Maybe y) (Maybe x, y)))
+  -> React m (Merged x y)
 merge' px_ py_ (React xs_) (React ys_) = React $ go px_ py_ xs_ ys_
   where
     go px py xs ys = do
         -- use the Alternative of m, not P.Proxy
-        r <- lift $ PFA.bothOrEither (P.next xs) (P.next ys)
+        r <- lift $ PI.bothOrEither (P.next xs) (P.next ys)
         case r
             -- both fs and as have ended
               of
-            Left (Left _, Left _) -> pure ()
+            PI.FromBoth' (Left _) (Left _) -> pure ()
             -- @xs@ ended,                @ys@ failed/retry/blocked
-            Right (Left (Left _)) -> ys P.>-> PP.map useRight
+            PI.FromLeft' (Left _) -> case px of
+                Nothing -> ys P.>-> PP.map (RightOnly OtherDead)
+                Just x -> ys P.>-> PP.map (Coupled (FromRight OtherDead) x)
             -- @xs@ failed/retry/blocked, @ys@ ended
-            Right (Right (Left _)) -> xs P.>-> PP.map useLeft
+            PI.FromRight' (Left _) -> case py of
+                Nothing -> xs P.>-> PP.map (LeftOnly OtherDead)
+                Just y -> xs P.>-> PP.map (\x -> Coupled (FromLeft OtherDead) x y)
             -- @xs@ produced something,   @ys@ failed/retry/blocked
-            Right (Left (Right (x, xs'))) -> do
-                P.yield $ Right (Left (x, py))
+            PI.FromLeft' (Right (x, xs')) -> do
+                case py of
+                    Nothing -> P.yield $ LeftOnly OtherLive x
+                    Just y -> P.yield $ Coupled (FromLeft OtherLive) x y
                 go (Just x) py xs' ys
             -- @xs@ failed/retry/blocked, @ys@ produced something
-            Right (Right (Right (y, ys'))) -> do
-                P.yield $ useRight y
+            PI.FromRight' (Right (y, ys')) -> do
+                case px of
+                    Nothing -> P.yield $ RightOnly OtherLive y
+                    Just x -> P.yield $ Coupled (FromRight OtherLive) x y
                 go px (Just y) xs ys'
             -- @xs@ produced something,   @ys@ ended
-            Left (Right (x, xs'), Left _) -> do
-                P.yield $ useLeft x
-                xs' P.>-> PP.map useLeft
+            PI.FromBoth' (Right (x, xs')) (Left _) ->
+                case py of
+                    Nothing -> do
+                        P.yield $ LeftOnly OtherDead x
+                        xs' P.>-> PP.map (LeftOnly OtherDead)
+                    Just y -> do
+                        P.yield $ Coupled (FromLeft OtherDead) x y
+                        xs' P.>-> PP.map (\x' -> Coupled (FromLeft OtherDead) x' y)
             -- @fs@ ended,                @as@ produced something
-            Left (Left _, Right (y, ys')) -> do
-                P.yield $ useRight y
-                ys' P.>-> PP.map useRight
+            PI.FromBoth' (Left _) (Right (y, ys')) ->
+                case px of
+                    Nothing -> do
+                        P.yield $ RightOnly OtherDead y
+                        ys' P.>-> PP.map (RightOnly OtherDead)
+                    Just x -> do
+                        P.yield $ Coupled (FromRight OtherDead) x y
+                        ys' P.>-> PP.map (Coupled (FromRight OtherDead) x)
             -- both @fs@ and @as@ produced something
-            Left (Right (x, xs'), Right (y, ys')) -> do
-                P.yield $ Left (x, y)
+            PI.FromBoth' (Right (x, xs')) (Right (y, ys')) -> do
+                P.yield $ Coupled FromBoth x y
                 go (Just x) (Just y) xs' ys'
-      where
-        useRight y = Right (Right (px, y))
-        useLeft x = Right (Left (x, py))
+{-# INLINABLE merge' #-}
 
 -- | A simpler version of merge', with the initial values as Nothing
-merge :: (Alternative m, Monad m) => React m x -> React m y -> React m (Either (x, y) (Either (x, Maybe y) (Maybe x, y)))
+merge :: (Alternative m, Monad m) => React m x -> React m y -> React m (Merged x y)
 merge = merge' Nothing Nothing
+{-# INLINABLE merge #-}

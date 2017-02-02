@@ -4,7 +4,6 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE ImpredicativeTypes #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -14,6 +13,7 @@ module Pipes.Fluid.ReactIO
     ( ReactIO(..)
     , mergeIO
     , mergeIO'
+    , module Pipes.Fluid.Common
     ) where
 
 import qualified Control.Concurrent.Async.Lifted.Safe as A
@@ -24,7 +24,8 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.Control
 import Data.Constraint.Forall (Forall)
 import qualified Pipes as P
-import qualified Pipes.Fluid.Alternative as PFA
+import Pipes.Fluid.Common
+import qualified Pipes.Fluid.Internal as PI
 import qualified Pipes.Prelude as PP
 
 -- | The applicative instance of this combines multiple Producers reactively
@@ -41,19 +42,21 @@ makeWrapped ''ReactIO
 
 instance Monad m => Functor (ReactIO m) where
   fmap f (ReactIO as) = ReactIO $ as P.>-> PP.map f
+  {-# INLINABLE fmap #-}
 
 instance (MonadBaseControl IO m, Forall (A.Pure m)) => Applicative (ReactIO m) where
     pure = ReactIO . P.yield
+    {-# INLINABLE pure #-}
+
     -- 'ap' doesn't know about initial values
     fs <*> as = ReactIO $ P.for (reactivelyIO $ mergeIO fs as) $ \r ->
         case r of
-            Left (f, a) -> P.yield $ f a
-            Right (Left (f, Just a)) -> P.yield $ f a
-            Right (Right (Just f, a)) -> P.yield $ f a
+            Coupled _ f a -> P.yield $ f a
             -- never got anything from one of the signals, can't do anything yet.
             -- drop the event
-            Right (Left (_, Nothing)) -> pure ()
-            Right (Right (Nothing, _)) -> pure ()
+            LeftOnly _ _ -> pure ()
+            RightOnly _ _-> pure ()
+    {-# INLINABLE (<*>) #-}
 
 -- | Reactively combines two producers, given initial values to use when the produce hasn't produced anything yet
 -- Combine two signals, and returns a signal that emits
@@ -68,7 +71,7 @@ mergeIO' :: (MonadBaseControl IO m, Forall (A.Pure m)) =>
   -> Maybe y
   -> ReactIO m x
   -> ReactIO m y
-  -> ReactIO m (Either (x, y) (Either (x, Maybe y) (Maybe x, y)))
+  -> ReactIO m (Merged x y)
 mergeIO' px_ py_ (ReactIO xs_) (ReactIO ys_) = ReactIO $ do
     ax <- lift $ A.async $ P.next xs_
     ay <- lift $ A.async $ P.next ys_
@@ -79,61 +82,86 @@ mergeIO' px_ py_ (ReactIO xs_) (ReactIO ys_) = ReactIO $ do
       -> Maybe y
       -> A.Async (Either () (x, P.Producer x m ()))
       -> A.Async (Either () (y, P.Producer y m ()))
-      -> P.Producer (Either (x, y) (Either (x, Maybe y) (Maybe x, y))) m ()
+      -> P.Producer (Merged x y) m ()
     doMergeIO px py ax ay = do
         r <-
             lift $
-            liftBase . S.atomically $ PFA.bothOrEither (A.waitSTM ax) (A.waitSTM ay)
+            liftBase . S.atomically $ PI.bothOrEither (A.waitSTM ax) (A.waitSTM ay)
         case r of
-            Left (Left _, Left _) -> pure () -- both @ax@ and @ay@ have ended
+            -- both @ax@ and @ay@ have ended
+            PI.FromBoth' (Left _) (Left _) -> pure ()
             -- @ax@ ended,                @ay@ still waiting
-            Right (Left (Left _)) -> do
+            PI.FromLeft' (Left _) -> do
                 ry <- lift $ A.wait ay -- wait for @ay@ to return and then
                                        -- only use @ys@
                 case ry of
                     Left _ -> pure ()
-                    Right (y', ys') -> do
-                        P.yield $ useRight y'
-                        ys' P.>-> PP.map useRight
+                    Right (y, ys') -> case px of
+                        Nothing -> do
+                            P.yield $ RightOnly OtherDead y
+                            ys' P.>-> PP.map (RightOnly OtherDead)
+                        Just x -> do
+                            P.yield $ Coupled (FromRight OtherDead) x y
+                            ys' P.>-> PP.map (Coupled (FromRight OtherDead) x)
             -- @ax@ still waiting,        @ay@ ended
-            Right (Right (Left _)) -> do
+            PI.FromRight' (Left _) -> do
                 rx <- lift $ A.wait ax -- wait for @ax@ to retrun and then
                                        -- only use @xs@
                 case rx of
                     Left _ -> pure ()
-                    Right (x', xs') -> do
-                        P.yield $ useLeft x'
-                        xs' P.>-> PP.map useLeft
+                    Right (x, xs') -> case py of
+                        Nothing -> do
+                            P.yield $ LeftOnly OtherDead x
+                            xs' P.>-> PP.map (LeftOnly OtherDead)
+                        Just y -> do
+                            P.yield $ Coupled (FromLeft OtherDead) x y
+                            xs' P.>-> PP.map (\x' -> Coupled (FromLeft OtherDead) x' y)
             -- @ax@ produced something,   @ay@ still waiting
-            Right (Left (Right (x, xs'))) -> do
-                P.yield $ useLeft x
+            PI.FromLeft' (Right (x, xs')) -> do
+                case py of
+                    Nothing -> P.yield $ LeftOnly OtherLive x
+                    Just y -> P.yield $ Coupled (FromLeft OtherLive) x y
                 ax' <- lift $ A.async $ P.next xs'
                 doMergeIO (Just x) py ax' ay
             -- @ax@ still waiting,        @ay@ produced something
-            Right (Right (Right (y, ys'))) -> do
-                P.yield $ useRight y
+            PI.FromRight' (Right (y, ys')) -> do
+                case px of
+                    Nothing -> P.yield $ RightOnly OtherLive y
+                    Just x -> P.yield $ Coupled (FromRight OtherLive) x y
                 ay' <- lift $ A.async $ P.next ys'
                 doMergeIO px (Just y) ax ay'
             -- @ax@ produced something,   @ay@ ended
-            Left (Right (x, xs'), Left _) -> do
-                P.yield $ useLeft x
-                xs' P.>-> PP.map useLeft
+            PI.FromBoth' (Right (x, xs')) (Left _) ->
+                case py of
+                    Nothing -> do
+                        P.yield $ LeftOnly OtherDead x
+                        xs' P.>-> PP.map (LeftOnly OtherDead)
+                    Just y -> do
+                        P.yield $ Coupled (FromLeft OtherDead) x y
+                        xs' P.>-> PP.map (\x' -> Coupled (FromLeft OtherDead) x' y)
             -- @af@ ended,                @aa@ produced something
-            Left (Left _, Right (y, ys')) -> do
-                P.yield $ useRight y
-                ys' P.>-> PP.map useRight
+            PI.FromBoth' (Left _) (Right (y, ys')) ->
+                case px of
+                    Nothing -> do
+                        P.yield $ RightOnly OtherDead y
+                        ys' P.>-> PP.map (RightOnly OtherDead)
+                    Just x -> do
+                        P.yield $ Coupled (FromRight OtherDead) x y
+                        ys' P.>-> PP.map (Coupled (FromRight OtherDead) x)
             -- both @fs@ and @as@ produced something
-            Left (Right (x, xs'), Right (y, ys')) -> do
-                P.yield $ Left (x, y)
+            PI.FromBoth' (Right (x, xs')) (Right (y, ys')) -> do
+                P.yield $ Coupled FromBoth x y
                 ax' <- lift $ A.async $ P.next xs'
                 ay' <- lift $ A.async $ P.next ys'
                 doMergeIO (Just x) (Just y) ax' ay'
       where
-        useRight y = Right (Right (px, y))
-        useLeft x = Right (Left (x, py))
+        useRight b y = Right (Right (b, px, y))
+        useLeft b x = Right (Left (b, x, py))
+{-# INLINABLE mergeIO' #-}
 
 mergeIO :: (MonadBaseControl IO m, Forall (A.Pure m))
     => ReactIO m x
     -> ReactIO m y
-    -> ReactIO m (Either (x, y) (Either (x, Maybe y) (Maybe x, y)))
+    -> ReactIO m (Merged x y)
 mergeIO = mergeIO' Nothing Nothing
+{-# INLINABLE mergeIO #-}
