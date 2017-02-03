@@ -2,7 +2,6 @@
 
 module Pipes.Fluid.Merge where
 
-import Data.Maybe
 import qualified GHC.Generics as G
 
 -- | Differentiates whether a value from either or both producers.
