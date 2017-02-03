@@ -37,12 +37,10 @@ resolver: nightly-2017-01-31
 # will not be run. This is useful for tweaking upstream packages.
 packages:
 - '.'
-- '/Users/louis/repo/haskell/pipes-misc'
 
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)
-extra-deps:
- - pipes-misc-0.2.3.0
+extra-deps: []
 
 # Override default flag values for local packages and extra-deps
 flags: {}
