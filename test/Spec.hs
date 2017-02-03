@@ -165,7 +165,7 @@ main = do
                     testSig' False $ \as bs ->
                         PP.toListM $
                         PF.reactivelyIO $
-                        (PF.ReactIO $ hoist atomically as) `PF.mergeIO` (PF.ReactIO $ hoist atomically bs)
+                        (PF.ReactIO $ hoist atomically as) `PF.merge` (PF.ReactIO $ hoist atomically bs)
                 xs `shouldSatisfy` isDifferent
 
 isBigger :: Ord a => [a] -> Bool
