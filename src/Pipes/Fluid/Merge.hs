@@ -1,13 +1,13 @@
-{-# OPTIONS_GHC -funbox-strict-fields #-}
 {-# LANGUAGE DeriveGeneric #-}
 
-module Pipes.Fluid.Common where
+module Pipes.Fluid.Merge where
 
+import Data.Maybe
 import qualified GHC.Generics as G
 
 -- | Differentiates whether a value from either or both producers.
 -- In the case of one producer, additional identify if the other producer is live or dead.
-data Source = FromBoth | FromLeft !OtherStatus | FromRight !OtherStatus
+data Source = FromBoth | FromLeft OtherStatus | FromRight OtherStatus
     deriving (Eq, Show, Ord, G.Generic)
 
 -- | The other producer can be live (still yielding values), or dead
@@ -17,9 +17,9 @@ data OtherStatus = OtherLive | OtherDead
 -- | Differentiates when only one side is available (due to initial merge values of Nothing)
 -- or if two values (one of which may be a previous values) are availabe.
 data Merged a b =
-    Coupled !Source !a !b
-    | LeftOnly !OtherStatus !a
-    | RightOnly !OtherStatus !b
+    Coupled Source a b
+    | LeftOnly OtherStatus a
+    | RightOnly OtherStatus b
     deriving (Eq, Show, Ord, G.Generic)
 
 -- | This can be used with 'Pipes.Prelude.takeWhile'
@@ -61,7 +61,39 @@ isRightDead _ = False
 
 -- | This can be used with 'Pipes.Prelude.takeWhile'
 isLeftDead :: Merged x y -> Bool
-isLeftDead (Coupled (RightLeft OtherDead) _ _) = True
+isLeftDead (Coupled (FromRight OtherDead) _ _) = True
 isLeftDead (RightOnly OtherDead _) = True
 isLeftDead _ = False
 {-# INLINABLE isLeftDead #-}
+
+class Merge f where
+    merge' :: Maybe x -> Maybe y -> f x -> f y -> f (Merged x y)
+
+merge :: Merge f => f x -> f y -> f (Merged x y)
+merge = merge' Nothing Nothing
+{-# INLINABLE merge #-}
+
+-- | Keep only the values originated from the left, replacing other yields with Nothing.
+-- This is useful when React is based on STM, since filtering with Producer STM results in
+-- larger STM transactions which may result in blocking.
+discreteLeft :: Merged x y -> Maybe x
+discreteLeft (LeftOnly _ x) = Just x
+discreteLeft (Coupled FromBoth  x _) = Just x
+discreteLeft (Coupled (FromLeft _)  x _) = Just x
+discreteLeft _ = Nothing
+
+-- | Keep only the values originated from the right, replacing other yields with Nothing.
+-- This is useful when React is based on STM, since filtering with Producer STM results in
+-- larger STM transactions which may result in blocking.
+discreteRight :: Merged x y -> Maybe y
+discreteRight (RightOnly _ y) = Just y
+discreteRight (Coupled FromBoth  _ y) = Just y
+discreteRight (Coupled (FromRight _)  _ y) = Just y
+discreteRight _ = Nothing
+
+-- | Keep only the values originated from both, replacing other yields with Nothing.
+-- This is useful when React is based on STM, since filtering with Producer STM results in
+-- larger STM transactions which may result in blocking.
+discreteBoth :: Merged x y -> Maybe (x, y)
+discreteBoth (Coupled FromBoth  x y) = Just (x, y)
+discreteBoth _ = Nothing
