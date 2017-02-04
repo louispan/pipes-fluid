@@ -19,8 +19,8 @@ import Data.Foldable
 import Data.Maybe
 import qualified Pipes as P
 import qualified Pipes.Concurrent as PC
-import qualified Pipes.Fluid.React as PF
-import qualified Pipes.Fluid.ReactIO as PF
+import qualified Pipes.Fluid.Impulse as PF
+import qualified Pipes.Fluid.ImpulseIO as PF
 import qualified Pipes.Fluid.Sync as PF
 import qualified Pipes.Misc.Concurrent as PM
 import qualified Pipes.Misc.State.Strict as PM
@@ -101,71 +101,71 @@ main = do
                         PF.synchronously $
                         (\a b -> (a, b, a + b)) <$> PF.Sync as <*> PF.Sync bs
                 xs `shouldBe` (\(a, b) -> (a, b, a + b)) <$> zip data1 data2
-        describe "React" $ do
-            it "React STM: yield a value whenever any producer yields a value" $ do
+        describe "Impulse" $ do
+            it "Impulse STM: yield a value whenever any producer yields a value" $ do
                 xs <-
                     testSig' False $ \as bs ->
                         PP.toListM $
                         hoist atomically $
-                        PF.reactively $
-                        (\a b -> (a, b, a + b)) <$> PF.React as <*> PF.React bs
+                        PF.impulsively $
+                        (\a b -> (a, b, a + b)) <$> PF.Impulse as <*> PF.Impulse bs
                 xs `shouldSatisfy` isBigger
-            it "React IdentityT STM: reactively yields under 't STM'" $ do
+            it "Impulse IdentityT STM: impulsively yields under 't STM'" $ do
                 xs <-
                     testSig' False $ \as bs ->
                         runIdentityT $
                         PP.toListM $
                         hoist (hoist atomically) $
-                        PF.reactively $
-                        (\a b -> (a, b, a + b)) <$> (PF.React $ hoist lift as) <*>
-                        (PF.React $ hoist lift bs)
+                        PF.impulsively $
+                        (\a b -> (a, b, a + b)) <$> (PF.Impulse $ hoist lift as) <*>
+                        (PF.Impulse $ hoist lift bs)
                 xs `shouldSatisfy` isBigger
-            it "React StateT STM: reactively yields under 'StateT STM'" $ do
+            it "Impulse StateT STM: impulsively yields under 'StateT STM'" $ do
                 xs <-
                     testSig' False $ \as bs ->
                         (`evalStateT` (Model 0 0)) $
                         PP.toListM $
                         (hoist (hoist atomically) $
-                         PF.reactively $
+                         PF.impulsively $
                          (\a b -> (a, b, a + b)) <$>
-                         (PF.React $ hoist lift as P.>-> PM.store id counter1) <*>
-                         (PF.React $ hoist lift bs P.>-> PM.store id counter2)) P.>->
+                         (PF.Impulse $ hoist lift as P.>-> PM.store id counter1) <*>
+                         (PF.Impulse $ hoist lift bs P.>-> PM.store id counter2)) P.>->
                         PM.retrieve id
                 xs `shouldSatisfy` isBigger
-            it "React Merge: yield a Left/Right value depending on which producer yields a value" $ do
+            it "Impulse Merge: yield a Left/Right value depending on which producer yields a value" $ do
                 xs <-
                     testSig' False $ \as bs ->
                         PP.toListM $
                         hoist atomically $
-                        PF.reactively $
-                        PF.React as `PF.merge`PF.React bs
+                        PF.impulsively $
+                        PF.Impulse as `PF.merge`PF.Impulse bs
                 xs `shouldSatisfy` isDifferent
-        describe "ReactIO" $ do
-            it "React IO: reactively yield under IO using lifted-async" $ do
+        describe "ImpulseIO" $ do
+            it "Impulse IO: impulsively yield under IO using lifted-async" $ do
                 xs <-
                     testSig' False $ \as bs ->
                         PP.toListM $
-                        PF.reactivelyIO $
-                        (\a b -> (a, b, a + b)) <$> (PF.ReactIO $ hoist atomically as) <*>
-                        (PF.ReactIO $ hoist atomically bs)
+                        PF.impulsivelyIO $
+                        (\a b -> (a, b, a + b)) <$> (PF.ImpulseIO $ hoist atomically as) <*>
+                        (PF.ImpulseIO $ hoist atomically bs)
                 xs `shouldSatisfy` isBigger
-            it "React IdentityT IO: reactively yield under 't IO' using lifted-async" $ do
+            it "Impulse IdentityT IO: impulsively yield under 't IO' using lifted-async" $ do
                 xs <-
                     testSig' False $ \as bs ->
                         runIdentityT $
                         PP.toListM $
-                        PF.reactivelyIO $
-                        (\a b -> (a, b, a + b)) <$> (PF.ReactIO $ hoist (lift . atomically) as) <*>
-                        (PF.ReactIO $ hoist (lift . atomically) bs)
+                        PF.impulsivelyIO $
+                        (\a b -> (a, b, a + b)) <$> (PF.ImpulseIO $ hoist (lift . atomically) as) <*>
+                        (PF.ImpulseIO $ hoist (lift . atomically) bs)
                 xs `shouldSatisfy` isBigger
-            it "\nReact StateT IO is unsafe (lift-async detect this as a compile error)" $ do
+            it "\nImpulse StateT IO is unsafe (lift-async detect this as a compile error)" $ do
                 pure () `shouldReturn` ()
-            it "ReactIO Merge: yield a Left/Right value depending on which producer yields a value" $ do
+            it "ImpulseIO Merge: yield a Left/Right value depending on which producer yields a value" $ do
                 xs <-
                     testSig' False $ \as bs ->
                         PP.toListM $
-                        PF.reactivelyIO $
-                        (PF.ReactIO $ hoist atomically as) `PF.merge` (PF.ReactIO $ hoist atomically bs)
+                        PF.impulsivelyIO $
+                        (PF.ImpulseIO $ hoist atomically as) `PF.merge` (PF.ImpulseIO $ hoist atomically bs)
                 xs `shouldSatisfy` isDifferent
 
 isBigger :: Ord a => [a] -> Bool

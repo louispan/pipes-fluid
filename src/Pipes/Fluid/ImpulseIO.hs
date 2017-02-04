@@ -9,8 +9,8 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Pipes.Fluid.ReactIO
-    ( ReactIO(..)
+module Pipes.Fluid.ImpulseIO
+    ( ImpulseIO(..)
     , module Pipes.Fluid.Merge
     ) where
 
@@ -33,22 +33,22 @@ import qualified Pipes.Prelude as PP
 -- Warning: This means that the monadic effects are run in isolation from each other
 -- so if the monad is something like (StateT s IO), then the state will alternate
 -- between the two input producers, which is most likely not what you want.
-newtype ReactIO m a = ReactIO
-    { reactivelyIO :: P.Producer a m ()
+newtype ImpulseIO m a = ImpulseIO
+    { impulsivelyIO :: P.Producer a m ()
     }
 
-makeWrapped ''ReactIO
+makeWrapped ''ImpulseIO
 
-instance Monad m => Functor (ReactIO m) where
-  fmap f (ReactIO as) = ReactIO $ as P.>-> PP.map f
+instance Monad m => Functor (ImpulseIO m) where
+  fmap f (ImpulseIO as) = ImpulseIO $ as P.>-> PP.map f
   {-# INLINABLE fmap #-}
 
-instance (MonadBaseControl IO m, Forall (A.Pure m)) => Applicative (ReactIO m) where
-    pure = ReactIO . P.yield
+instance (MonadBaseControl IO m, Forall (A.Pure m)) => Applicative (ImpulseIO m) where
+    pure = ImpulseIO . P.yield
     {-# INLINABLE pure #-}
 
     -- 'ap' doesn't know about initial values
-    fs <*> as = ReactIO $ P.for (reactivelyIO $ merge fs as) $ \r ->
+    fs <*> as = ImpulseIO $ P.for (impulsivelyIO $ merge fs as) $ \r ->
         case r of
             Coupled _ f a -> P.yield $ f a
             -- never got anything from one of the signals, can't do anything yet.
@@ -65,8 +65,8 @@ instance (MonadBaseControl IO m, Forall (A.Pure m)) => Applicative (ReactIO m) w
 -- so if the monad is something like (StateT s IO), then the state will alternate
 -- between the two input producers, which is most likely not what you want.
 -- This will be detect as a compile error due to use of Control.Concurrent.Async.Lifted.Safe
-instance (MonadBaseControl IO m, Forall (A.Pure m)) => Merge (ReactIO m) where
-    merge' px_ py_ (ReactIO xs_) (ReactIO ys_) = ReactIO $ do
+instance (MonadBaseControl IO m, Forall (A.Pure m)) => Merge (ImpulseIO m) where
+    merge' px_ py_ (ImpulseIO xs_) (ImpulseIO ys_) = ImpulseIO $ do
         ax <- lift $ A.async $ P.next xs_
         ay <- lift $ A.async $ P.next ys_
         doMergeIO px_ py_ ax ay
@@ -150,7 +150,7 @@ instance (MonadBaseControl IO m, Forall (A.Pure m)) => Merge (ReactIO m) where
                     doMergeIO (Just x) (Just y) ax' ay'
     {-# INLINABLE merge' #-}
 
--- | Used internally by React and ReactIO identifying which side (or both) returned values
+-- | Used internally by Impulse and ImpulseIO identifying which side (or both) returned values
 bothOrEither :: Alternative f => f a -> f b -> f (These a b)
 bothOrEither left right =
   (These <$> left <*> right)

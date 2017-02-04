@@ -8,8 +8,8 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 
-module Pipes.Fluid.React
-    ( React(..)
+module Pipes.Fluid.Impulse
+    ( Impulse(..)
     , module Pipes.Fluid.Merge
     ) where
 
@@ -23,28 +23,28 @@ import qualified Pipes.Prelude as PP
 
 -- | The applicative instance of this combines multiple Producers reactively
 -- ie, yields a value as soon as either or both of the input producers yields a value.
-newtype React m a = React
-    { reactively :: P.Producer a m ()
+newtype Impulse m a = Impulse
+    { impulsively :: P.Producer a m ()
     }
 
-makeWrapped ''React
+makeWrapped ''Impulse
 
 instance Monad m =>
-         Functor (React m) where
-    fmap f (React as) = React $ as P.>-> PP.map f
+         Functor (Impulse m) where
+    fmap f (Impulse as) = Impulse $ as P.>-> PP.map f
     {-# INLINABLE fmap #-}
 
--- | Reactively combines two producers, given initial values to use when the producer is blocked/failed.
+-- | Impulseively combines two producers, given initial values to use when the producer is blocked/failed.
 -- This only works for Alternative m where failure means there was no effects, eg. 'Control.Concurrent.STM', or @MonadTrans t => t STM@.
 -- Be careful of monad transformers like ExceptT that hides the STM Alternative instance.
 instance (Alternative m, Monad m) =>
-         Applicative (React m) where
-    pure = React . P.yield
+         Applicative (Impulse m) where
+    pure = Impulse . P.yield
     {-# INLINABLE pure #-}
 
     fs <*> as =
-        React $
-        P.for (reactively $ merge fs as) $ \r ->
+        Impulse $
+        P.for (impulsively $ merge fs as) $ \r ->
             case r of
                 Coupled _ f a -> P.yield $ f a
                 -- never got anything from one of the signals, can't do anything yet.
@@ -53,13 +53,13 @@ instance (Alternative m, Monad m) =>
                 RightOnly _ _-> lift empty
     {-# INLINABLE (<*>) #-}
 
--- | Reactively combines two producers, given initial values to use when the produce hasn't produced anything yet
+-- | Impulseively combines two producers, given initial values to use when the produce hasn't produced anything yet
 -- Combine two signals, and returns a signal that emits
 -- @Either bothfired (Either (leftFired, previousRight) (previousLeft, rightFired))@.
 -- This only works for Alternative m where failure means there was no effects, eg. 'Control.Concurrent.STM', or @MonadTrans t => t STM@.
 -- Be careful of monad transformers ExceptT that hides the STM Alternative instance.
-instance (Alternative m, Monad m) => Merge (React m) where
-    merge' px_ py_ (React xs_) (React ys_) = React $ go px_ py_ xs_ ys_
+instance (Alternative m, Monad m) => Merge (Impulse m) where
+    merge' px_ py_ (Impulse xs_) (Impulse ys_) = Impulse $ go px_ py_ xs_ ys_
       where
         go px py xs ys = do
             -- use the Alternative of m, not P.Proxy
@@ -112,7 +112,7 @@ instance (Alternative m, Monad m) => Merge (React m) where
                     go (Just x) (Just y) xs' ys'
     {-# INLINABLE merge' #-}
 
--- | Used internally by React and ReactIO identifying which side (or both) returned values
+-- | Used internally by Impulse and ImpulseIO identifying which side (or both) returned values
 bothOrEither :: Alternative f => f a -> f b -> f (These a b)
 bothOrEither left right =
   (These <$> left <*> right)
