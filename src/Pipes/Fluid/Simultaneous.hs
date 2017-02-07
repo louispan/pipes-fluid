@@ -6,8 +6,8 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE BangPatterns #-}
 
-module Pipes.Fluid.Sync
-    ( Sync(..)
+module Pipes.Fluid.Simultaneous
+    ( Simultaneous(..)
     ) where
 
 import Control.Lens
@@ -19,18 +19,18 @@ import qualified Pipes.Prelude as PP
 -- | The applicative instance of this combines multiple Producers synchronously
 -- ie, yields a value only when both of the input producers yields a value.
 -- Ends as soon as any of the input producer is ended.
-newtype Sync m a = Sync
-    { synchronously :: P.Producer a m ()
+newtype Simultaneous m a = Simultaneous
+    { simultaneously :: P.Producer a m ()
     }
 
-makeWrapped ''Sync
+makeWrapped ''Simultaneous
 
-instance Monad m => Functor (Sync m) where
-    fmap f (Sync as) = Sync $ as P.>-> PP.map f
+instance Monad m => Functor (Simultaneous m) where
+    fmap f (Simultaneous as) = Simultaneous $ as P.>-> PP.map f
 
-instance Monad m => Applicative (Sync m) where
-    pure = Sync . forever . P.yield
-    Sync xs <*> Sync ys = Sync $ go xs ys
+instance Monad m => Applicative (Simultaneous m) where
+    pure = Simultaneous . forever . P.yield
+    Simultaneous xs <*> Simultaneous ys = Simultaneous $ go xs ys
 
 go :: Monad m => P.Producer (t -> a) m r -> P.Producer t m r -> P.Proxy x' x () a m ()
 go fs as = do
@@ -43,15 +43,15 @@ go fs as = do
             P.yield $ f a
             go fs' as'
 
-instance Monad m => Monad (Sync m) where
-    Sync as >>= f = Sync $ do
+instance Monad m => Monad (Simultaneous m) where
+    Simultaneous as >>= f = Simultaneous $ do
         ra <- lift $ P.next as
         case ra of
             Left _ -> pure ()
             Right (a, as') -> do
-                rb <- lift . P.next . synchronously $ f a
+                rb <- lift . P.next . simultaneously $ f a
                 case rb of
                     Left _ -> pure ()
                     Right (b, _) -> do
                         P.yield b
-                        synchronously $ Sync as' >>= f
+                        simultaneously $ Simultaneous as' >>= f

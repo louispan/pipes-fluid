@@ -21,7 +21,7 @@ import qualified Pipes as P
 import qualified Pipes.Concurrent as PC
 import qualified Pipes.Fluid.Impulse as PF
 import qualified Pipes.Fluid.ImpulseIO as PF
-import qualified Pipes.Fluid.Sync as PF
+import qualified Pipes.Fluid.Simultaneous as PF
 import qualified Pipes.Misc.Concurrent as PM
 import qualified Pipes.Misc.State.Strict as PM
 import qualified Pipes.Prelude as PP
@@ -51,7 +51,7 @@ delay i = P.for P.cat $ \a -> do
   lift $ threadDelay i
   P.yield a
 
--- | For the Sync tests, not all the input will be consumed
+-- | For the Simultaneous tests, not all the input will be consumed
 -- so quitEarly will close the mailbox when an of the feeders
 -- have finished feeding.
 testSig' :: Bool -> (P.Producer Int STM () -> P.Producer Int STM () -> IO a) -> IO a
@@ -92,14 +92,14 @@ testSig' quitEarly f = do
 main :: IO ()
 main = do
     hspec $ do
-        describe "Sync" $ do
+        describe "Simultaneous" $ do
             it "only yield a value when both producers yields a value" $ do
                 xs <-
                     testSig' True $ \as bs ->
                         PP.toListM $
                         hoist atomically $
-                        PF.synchronously $
-                        (\a b -> (a, b, a + b)) <$> PF.Sync as <*> PF.Sync bs
+                        PF.simultaneously $
+                        (\a b -> (a, b, a + b)) <$> PF.Simultaneous as <*> PF.Simultaneous bs
                 xs `shouldBe` (\(a, b) -> (a, b, a + b)) <$> zip data1 data2
         describe "Impulse" $ do
             it "Impulse STM: yield a value whenever any producer yields a value" $ do
