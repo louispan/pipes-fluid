@@ -16,6 +16,7 @@ module Pipes.Fluid.Impulse
 import Control.Applicative
 import Control.Lens
 import Control.Monad.Trans.Class
+import Data.Semigroup
 import Data.These
 import qualified Pipes as P
 import Pipes.Fluid.Merge
@@ -28,6 +29,13 @@ newtype Impulse m a = Impulse
     }
 
 makeWrapped ''Impulse
+
+instance  (Alternative m, Monad m, Semigroup a) => Semigroup (Impulse m a) where
+    (<>) = mergeDiscrete
+
+instance  (Alternative m, Monad m, Semigroup a) => Monoid (Impulse m a) where
+    mempty = Impulse $ pure ()
+    mappend = mergeDiscrete
 
 instance Monad m =>
          Functor (Impulse m) where

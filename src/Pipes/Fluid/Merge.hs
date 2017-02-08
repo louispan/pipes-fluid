@@ -4,6 +4,8 @@ module Pipes.Fluid.Merge where
 
 import qualified GHC.Generics as G
 import Data.Semigroup
+import Data.Foldable
+import qualified Data.List.NonEmpty as NE
 
 -- | Differentiates whether a value from either or both producers.
 -- In the case of one producer, additional identify if the other producer is live or dead.
@@ -98,12 +100,25 @@ discreteBoth :: Merged x y -> Maybe (x, y)
 discreteBoth (Coupled FromBoth x y) = Just (x, y)
 discreteBoth _ = Nothing
 
--- | Keep only the values originated from both, replacing other yields with Nothing.
--- This is useful when React is based on STM, since filtering with Producer STM results in
--- larger STM transactions which may result in blocking.
+-- | Keep only the "new" values
+discrete' :: Merged x x -> NE.NonEmpty x
+discrete' (Coupled FromBoth x y) = x  NE.:| [y]
+discrete' (Coupled (FromRight _) _ y) = y NE.:| []
+discrete' (Coupled (FromLeft _) x _) = x NE.:| []
+discrete' (RightOnly _ y) = y NE.:| []
+discrete' (LeftOnly _ x) = x  NE.:| []
+
+-- | Keep only the "new" values (using semigroup <> when both values were active)
 discrete :: Semigroup x => Merged x x -> x
-discrete (Coupled FromBoth x y) = x <> y
-discrete (Coupled (FromRight _) _ y) = y
-discrete (Coupled (FromLeft _) x _) = x
-discrete (RightOnly _ y) = y
-discrete (LeftOnly _ x) = x
+discrete = nonEmptyFoldl1' . discrete'
+    where
+      nonEmptyFoldl1' :: Semigroup b => NE.NonEmpty b -> b
+      nonEmptyFoldl1' (x  NE.:| xs) = foldl' (<>) x xs
+
+-- | merge two producers of the same type together.
+mergeDiscrete' :: (Merge f, Functor f) => f x -> f x -> f (NE.NonEmpty x)
+mergeDiscrete' x y = discrete' <$> (x `merge` y)
+
+-- | merge two producers of the same type together (using semigroup <> when both values were active)
+mergeDiscrete :: (Semigroup x, Merge f, Functor f) => f x -> f x -> f x
+mergeDiscrete x y = discrete <$> (x `merge` y)

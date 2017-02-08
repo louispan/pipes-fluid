@@ -22,6 +22,7 @@ import Control.Monad.Base
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Control
 import Data.Constraint.Forall (Forall)
+import Data.Semigroup
 import Data.These
 import qualified Pipes as P
 import Pipes.Fluid.Merge
@@ -38,6 +39,13 @@ newtype ImpulseIO m a = ImpulseIO
     }
 
 makeWrapped ''ImpulseIO
+
+instance  (MonadBaseControl IO m, Forall (A.Pure m), Semigroup a) => Semigroup (ImpulseIO m a) where
+    (<>) = mergeDiscrete
+
+instance  (MonadBaseControl IO m, Forall (A.Pure m), Semigroup a) => Monoid (ImpulseIO m a) where
+    mempty = ImpulseIO $ pure ()
+    mappend = mergeDiscrete
 
 instance Monad m => Functor (ImpulseIO m) where
   fmap f (ImpulseIO as) = ImpulseIO $ as P.>-> PP.map f
