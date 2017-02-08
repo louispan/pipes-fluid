@@ -3,6 +3,7 @@
 module Pipes.Fluid.Merge where
 
 import qualified GHC.Generics as G
+import Data.Semigroup
 
 -- | Differentiates whether a value from either or both producers.
 -- In the case of one producer, additional identify if the other producer is live or dead.
@@ -78,7 +79,7 @@ merge = merge' Nothing Nothing
 discreteLeft :: Merged x y -> Maybe x
 discreteLeft (LeftOnly _ x) = Just x
 discreteLeft (Coupled FromBoth  x _) = Just x
-discreteLeft (Coupled (FromLeft _)  x _) = Just x
+discreteLeft (Coupled (FromLeft _) x _) = Just x
 discreteLeft _ = Nothing
 
 -- | Keep only the values originated from the right, replacing other yields with Nothing.
@@ -87,12 +88,22 @@ discreteLeft _ = Nothing
 discreteRight :: Merged x y -> Maybe y
 discreteRight (RightOnly _ y) = Just y
 discreteRight (Coupled FromBoth  _ y) = Just y
-discreteRight (Coupled (FromRight _)  _ y) = Just y
+discreteRight (Coupled (FromRight _) _ y) = Just y
 discreteRight _ = Nothing
 
 -- | Keep only the values originated from both, replacing other yields with Nothing.
 -- This is useful when React is based on STM, since filtering with Producer STM results in
 -- larger STM transactions which may result in blocking.
 discreteBoth :: Merged x y -> Maybe (x, y)
-discreteBoth (Coupled FromBoth  x y) = Just (x, y)
+discreteBoth (Coupled FromBoth x y) = Just (x, y)
 discreteBoth _ = Nothing
+
+-- | Keep only the values originated from both, replacing other yields with Nothing.
+-- This is useful when React is based on STM, since filtering with Producer STM results in
+-- larger STM transactions which may result in blocking.
+discrete :: Semigroup x => Merged x x -> x
+discrete (Coupled FromBoth x y) = x <> y
+discrete (Coupled (FromRight _) _ y) = y
+discrete (Coupled (FromLeft _) x _) = x
+discrete (RightOnly _ y) = y
+discrete (LeftOnly _ x) = x
