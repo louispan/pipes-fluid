@@ -1,5 +1,5 @@
 name:                pipes-fluid
-version:             0.5.0.1
+version:             0.5.0.2
 synopsis:            Reactively combines Producers so that a value is yielded as soon as possible.
 description:         Please see README.md
 homepage:            https://github.com/louispan/pipes-fluid#readme
