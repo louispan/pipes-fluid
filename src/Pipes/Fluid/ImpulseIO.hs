@@ -49,11 +49,9 @@ instance  (MonadBaseControl IO m, Forall (A.Pure m), Semigroup a) => Monoid (Imp
 
 instance Monad m => Functor (ImpulseIO m) where
   fmap f (ImpulseIO as) = ImpulseIO $ as P.>-> PP.map f
-  {-# INLINABLE fmap #-}
 
 instance (MonadBaseControl IO m, Forall (A.Pure m)) => Applicative (ImpulseIO m) where
     pure = ImpulseIO . P.yield
-    {-# INLINABLE pure #-}
 
     -- 'ap' doesn't know about initial values
     fs <*> as = ImpulseIO $ P.for (impulsivelyIO $ merge fs as) $ \r ->
@@ -63,7 +61,6 @@ instance (MonadBaseControl IO m, Forall (A.Pure m)) => Applicative (ImpulseIO m)
             -- drop the event
             LeftOnly _ _ -> pure ()
             RightOnly _ _-> pure ()
-    {-# INLINABLE (<*>) #-}
 
 -- | Reactively combines two producers, given initial values to use when the produce hasn't produced anything yet
 -- Combine two signals, and returns a signal that emits
@@ -156,7 +153,6 @@ instance (MonadBaseControl IO m, Forall (A.Pure m)) => Merge (ImpulseIO m) where
                     ax' <- lift $ A.async $ P.next xs'
                     ay' <- lift $ A.async $ P.next ys'
                     doMergeIO (Just x) (Just y) ax' ay'
-    {-# INLINABLE merge' #-}
 
 -- | Used internally by Impulse and ImpulseIO identifying which side (or both) returned values
 bothOrEither :: Alternative f => f a -> f b -> f (These a b)
@@ -166,4 +162,3 @@ bothOrEither left right =
   (This <$> left)
   <|>
   (That <$> right)
-{-# INLINABLE bothOrEither #-}

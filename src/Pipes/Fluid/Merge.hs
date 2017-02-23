@@ -32,7 +32,6 @@ isBothLive (Coupled (FromRight OtherLive) _ _) = True
 isBothLive (LeftOnly OtherLive _) = True
 isBothLive (RightOnly OtherLive _) = True
 isBothLive _ = False
-{-# INLINABLE isBothLive #-}
 
 -- | This can be used with 'Pipes.Prelude.takeWhile'
 isLeftLive :: Merged x y -> Bool
@@ -42,7 +41,6 @@ isLeftLive (Coupled (FromRight OtherLive) _ _) = True
 isLeftLive (LeftOnly _ _) = True
 isLeftLive (RightOnly OtherLive _) = True
 isLeftLive _ = False
-{-# INLINABLE isLeftLive #-}
 
 -- | This can be used with 'Pipes.Prelude.takeWhile'
 isRightLive :: Merged x y -> Bool
@@ -52,28 +50,24 @@ isRightLive (Coupled (FromLeft OtherLive) _ _) = True
 isRightLive (RightOnly _ _) = True
 isRightLive (LeftOnly OtherLive _) = True
 isRightLive _ = False
-{-# INLINABLE isRightLive #-}
 
 -- | This can be used with 'Pipes.Prelude.takeWhile'
 isRightDead :: Merged x y -> Bool
 isRightDead (Coupled (FromLeft OtherDead) _ _) = True
 isRightDead (LeftOnly OtherDead _) = True
 isRightDead _ = False
-{-# INLINABLE isRightDead #-}
 
 -- | This can be used with 'Pipes.Prelude.takeWhile'
 isLeftDead :: Merged x y -> Bool
 isLeftDead (Coupled (FromRight OtherDead) _ _) = True
 isLeftDead (RightOnly OtherDead _) = True
 isLeftDead _ = False
-{-# INLINABLE isLeftDead #-}
 
 class Merge f where
     merge' :: Maybe x -> Maybe y -> f x -> f y -> f (Merged x y)
 
 merge :: Merge f => f x -> f y -> f (Merged x y)
 merge = merge' Nothing Nothing
-{-# INLINABLE merge #-}
 
 -- | Keep only the values originated from the left, replacing other yields with Nothing.
 -- This is useful when React is based on STM, since filtering with Producer STM results in

@@ -40,7 +40,6 @@ instance  (Alternative m, Monad m, Semigroup a) => Monoid (Impulse m a) where
 instance Monad m =>
          Functor (Impulse m) where
     fmap f (Impulse as) = Impulse $ as P.>-> PP.map f
-    {-# INLINABLE fmap #-}
 
 -- | Impulseively combines two producers, given initial values to use when the producer is blocked/failed.
 -- This only works for Alternative m where failure means there was no effects, eg. 'Control.Concurrent.STM', or @MonadTrans t => t STM@.
@@ -48,7 +47,6 @@ instance Monad m =>
 instance (Alternative m, Monad m) =>
          Applicative (Impulse m) where
     pure = Impulse . P.yield
-    {-# INLINABLE pure #-}
 
     fs <*> as =
         Impulse $
@@ -59,7 +57,6 @@ instance (Alternative m, Monad m) =>
                 -- fail/retry/block until we get something from the other signal
                 LeftOnly _ _ -> lift empty
                 RightOnly _ _-> lift empty
-    {-# INLINABLE (<*>) #-}
 
 -- | Impulseively combines two producers, given initial values to use when the produce hasn't produced anything yet
 -- Combine two signals, and returns a signal that emits
@@ -118,7 +115,6 @@ instance (Alternative m, Monad m) => Merge (Impulse m) where
                 These (Right (x, xs')) (Right (y, ys')) -> do
                     P.yield $ Coupled FromBoth x y
                     go (Just x) (Just y) xs' ys'
-    {-# INLINABLE merge' #-}
 
 -- | Used internally by Impulse and ImpulseIO identifying which side (or both) returned values
 bothOrEither :: Alternative f => f a -> f b -> f (These a b)
@@ -128,4 +124,3 @@ bothOrEither left right =
   (This <$> left)
   <|>
   (That <$> right)
-{-# INLINABLE bothOrEither #-}
