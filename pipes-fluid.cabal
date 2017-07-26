@@ -1,7 +1,7 @@
 name:                pipes-fluid
-version:             0.5.0.3
+version:             0.6.0.0
 synopsis:            Reactively combines Producers so that a value is yielded as soon as possible.
-description:         Please see README.md
+description:         Reactively combines Producers so that a value is yielded as soon as possible.
 homepage:            https://github.com/louispan/pipes-fluid#readme
 license:             BSD3
 license-file:        LICENSE
