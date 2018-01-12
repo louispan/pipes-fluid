@@ -5,6 +5,4 @@ Applicative instances that allows reactively combining 'Pipes.Producer's so that
 
 See [Spec.hs](https://github.com/louispan/pipes-fluid/blob/master/test/Spec.hs) for example usage.
 
-See [glazier-tutorial](https://github.com/louispan/glazier-tutorial/blob/20c6dac73e16ab8ba65a0157f49c8ff2a0b75d03/src/Glazier/Tutorial/Console.hs#L432) for a working console example.
-
-See also [slides](http://www.slideshare.net/LouisPan3/composable-widgets-with-reactive-pipes).
+See also [Signals wiki](https://github.com/louispan/pipes-fluid/wiki/Signals).
