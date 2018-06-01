@@ -129,7 +129,7 @@ main = do
                          (\a b -> (a, b, a + b)) <$>
                          (PF.Impulse $ hoist lift as P.>-> PM.store id counter1) <*>
                          (PF.Impulse $ hoist lift bs P.>-> PM.store id counter2)) P.>->
-                        PM.retrieve id
+                        PM.restore id
                 xs `shouldSatisfy` isBigger
             it "Impulse Merge: yield a Left/Right value depending on which producer yields a value" $ do
                 xs <-

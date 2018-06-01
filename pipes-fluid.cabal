@@ -1,5 +1,5 @@
 name:                pipes-fluid
-version:             0.6.0.0
+version:             0.6.0.1
 synopsis:            Reactively combines Producers so that a value is yielded as soon as possible.
 description:         Reactively combines Producers so that a value is yielded as soon as possible.
 homepage:            https://github.com/louispan/pipes-fluid#readme
@@ -50,7 +50,7 @@ test-suite pipes-fluid-test
                      , pipes >= 4
                      , pipes-concurrency >= 2
                      , pipes-fluid
-                     , pipes-misc >= 0.2.3.0
+                     , pipes-misc >= 0.5
                      , stm >= 2.4
                      , transformers >= 0.4
   ghc-options:         -Wall -threaded -rtsopts -with-rtsopts=-N
